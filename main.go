@@ -14,9 +14,11 @@ func main() {
 
 	// 设置路由器的配置
 	router.SetConfig(&AppConfig)
+	router.SetWebhookSecret(AppConfig.GetWebhookSecret())
 
 	// 注册路由
 	http.HandleFunc("/review", router.HandleReview)
+	http.HandleFunc("/webhook", router.HandleWebhook)
 	http.HandleFunc("/health", router.HandleHealth)
 
 	// 启动服务

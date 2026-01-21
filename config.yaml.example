@@ -19,6 +19,11 @@ port: "7995"
 # 创建 GitHub Token: https://github.com/settings/tokens
 github_token: "ghp_xxxxxxxxxxxxxxxxxxxxx"
 
+# GitHub Webhook Secret (optional, but recommended for security)
+# 用于验证 webhook 请求的签名，建议使用随机字符串
+# 如果不填写，则不验证签名（不安全）
+webhook_secret: ""
+
 # AI Review Prompts
 # System prompt - defines the AI's role and behavior
 system_prompt: |

@@ -14,6 +14,7 @@ type Config struct {
 	AIModel            string `yaml:"ai_model"`
 	Port               string `yaml:"port"`
 	GithubToken        string `yaml:"github_token"`
+	WebhookSecret      string `yaml:"webhook_secret"`
 	SystemPrompt       string `yaml:"system_prompt"`
 	UserPromptTemplate string `yaml:"user_prompt_template"`
 }
@@ -66,4 +67,9 @@ func (c *Config) GetGithubToken() string {
 // GetAIConfig 获取 AI 配置
 func (c *Config) GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplate string) {
 	return c.AIApiURL, c.AIApiKey, c.AIModel, c.SystemPrompt, c.UserPromptTemplate
+}
+
+// GetWebhookSecret 获取 Webhook Secret
+func (c *Config) GetWebhookSecret() string {
+	return c.WebhookSecret
 }
