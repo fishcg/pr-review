@@ -63,6 +63,17 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
+// HandleIndex 首页处理
+func HandleIndex(w http.ResponseWriter, r *http.Request) {
+	// 只处理根路径
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.ServeFile(w, r, "static/index.html")
+}
+
 // ProcessReview 处理 PR 审查的完整流程
 func ProcessReview(repo string, prNum int, token string) {
 	// === A. 获取 Diff ===

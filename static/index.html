@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PR Review - 智能代码审查服务</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+
+        .logo {
+            font-size: 3.5rem;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+
+        .status {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Content */
+        .main-content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Features Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin: 40px 0;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 30px;
+            border-radius: 15px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+        }
+
+        .feature-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+
+        .feature-card p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* Section */
+        section {
+            margin: 50px 0;
+        }
+
+        h2 {
+            color: #667eea;
+            font-size: 2rem;
+            margin-bottom: 25px;
+            position: relative;
+            padding-bottom: 10px;
+        }
+
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+        }
+
+        /* API Documentation */
+        .api-endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .api-endpoint h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-right: 10px;
+        }
+
+        .method.post {
+            background: #10b981;
+            color: white;
+        }
+
+        .method.get {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            background: #e5e7eb;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.95rem;
+        }
+
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Quick Start */
+        .step {
+            background: #f0f4ff;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            text-align: center;
+            line-height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: white;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: underline;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
+
+            .main-content {
+                padding: 25px;
+            }
+        }
+
+        /* Highlight */
+        .highlight {
+            background: linear-gradient(120deg, #ffd89b 0%, #19547b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info-box {
+            background: #e0f2fe;
+            border-left: 4px solid #0284c7;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🤖</div>
+            <h1>Github CI CR</h1>
+            <p class="subtitle">基于 AI 的智能代码审查服务</p>
+            <div class="status">
+                <span class="status-dot"></span>
+                快速构建您的 AI 代码审查工作流
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 产品介绍 -->
+            <section id="intro">
+                <h2>产品介绍</h2>
+                <p style="font-size: 1.1rem; color: #555; line-height: 1.8;">
+                    AI PR Review 是一个基于人工智能的代码审查服务，能够自动分析 GitHub Pull Request 中的代码变更，
+                    发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
+                    帮助团队提高代码质量，减少人工审查工作量。
+                </p>
+            </section>
+
+            <!-- 核心功能 -->
+            <section id="features">
+                <h2>核心功能</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔍</div>
+                        <h3>智能代码分析</h3>
+                        <p>AI 深度分析代码变更，识别 Bug、安全漏洞、性能问题等多维度问题</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>自动化触发</h3>
+                        <p>通过 GitHub Webhook 自动触发，PR 有新提交时立即进行审查</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎯</div>
+                        <h3>精准评分</h3>
+                        <p>提供 100 分制代码质量评分，直观展示代码质量水平</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💡</div>
+                        <h3>改进建议</h3>
+                        <p>不仅指出问题，还提供具体的修改建议和最佳实践</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h3>安全检查</h3>
+                        <p>专门的安全审查，检测 SQL 注入、XSS、敏感信息泄露等安全风险</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h3>多维度分析</h3>
+                        <p>从代码规范、性能、安全、可维护性等多个维度进行全面分析</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 快速开始 -->
+            <section id="quick-start">
+                <h2>快速开始</h2>
+
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>配置 GitHub Webhook</strong>
+                    <p style="margin-top: 10px;">在仓库 Settings → Webhooks 中添加 Webhook，Payload URL 填写：</p>
+                    <pre>https://ai.acgay.cn/webhook</pre>
+                    <p>选择事件：Pull requests</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>等待自动触发</strong>
+                    <p style="margin-top: 10px;">创建或更新 PR 时，服务会自动进行代码审查</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>查看审查结果</strong>
+                    <p style="margin-top: 10px;">AI 会在 PR 中自动发布评论，包含详细的审查报告</p>
+                </div>
+
+                <div class="info-box">
+                    <strong>💡 提示：</strong> 也可以通过 API 手动触发审查，详见下方 API 文档
+                </div>
+            </section>
+
+            <!-- API 文档 -->
+            <section id="api">
+                <h2>API 文档</h2>
+
+                <div class="api-endpoint">
+                    <h4>
+                        <span class="method post">POST</span>
+                        <span class="endpoint-path">/webhook</span>
+                    </h4>
+                    <p><strong>说明：</strong>GitHub Webhook 接收端点（自动触发）</p>
+                    <p><strong>触发时机：</strong>PR 创建、更新、重新打开时自动调用</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <h4>
+                        <span class="method post">POST</span>
+                        <span class="endpoint-path">/review</span>
+                    </h4>
+                    <p><strong>说明：</strong>手动触发 PR 审查</p>
+                    <p><strong>请求体：</strong></p>
+<pre><code>{
+  "repo": "owner/repository",
+  "pr_number": 123
+}</code></pre>
+                    <p><strong>示例：</strong></p>
+<pre><code>curl -X POST https://ai.acgay.cn/review \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "username/my-project",
+    "pr_number": 42
+  }'</code></pre>
+                    <p><strong>响应：</strong>202 Accepted - Review started for username/my-project #42</p>
+                </div>
+
+                <div class="api-endpoint">
+                    <h4>
+                        <span class="method get">GET</span>
+                        <span class="endpoint-path">/health</span>
+                    </h4>
+                    <p><strong>说明：</strong>健康检查端点</p>
+                    <p><strong>响应：</strong>200 OK - ok</p>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ 注意：</strong> 审查过程是异步执行的，API 会立即返回，实际审查结果会在几秒到几十秒后发布到 PR 评论中。
+                </div>
+            </section>
+
+            <!-- 技术架构 -->
+            <section id="tech">
+                <h2>技术架构</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔧</div>
+                        <h3>后端框架</h3>
+                        <p>Go + 标准库 net/http，轻量高效</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>AI 引擎</h3>
+                        <p>支持通义千问等主流大语言模型</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">☁️</div>
+                        <h3>部署方式</h3>
+                        <p>Kubernetes + Docker，云原生架构</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 示例输出 -->
+            <section id="example">
+                <h2>审查报告示例</h2>
+                <p>AI 会生成结构化的审查报告，包含以下内容：</p>
+                <ul style="margin: 20px 0 20px 30px; line-height: 2;">
+                    <li>📊 <strong>代码质量评分</strong> - 总分及评分说明</li>
+                    <li>✅ <strong>做得好的地方</strong> - 值得肯定的代码实现</li>
+                    <li>⚠️ <strong>需要注意的问题</strong> - 严重问题和优化建议</li>
+                    <li>🔒 <strong>安全检查</strong> - SQL注入、XSS、敏感信息泄露等</li>
+                    <li>⚡ <strong>性能建议</strong> - 性能优化方向</li>
+                    <li>📝 <strong>代码规范</strong> - 命名、注释、格式等</li>
+                    <li>💡 <strong>总体建议</strong> - 改进方向总结</li>
+                </ul>
+            </section>
+        </div>
+
+        <footer>
+            <p>Powered by AI</p>
+            <p style="margin-top: 10px; opacity: 0.8; font-size: 0.9rem;">
+                如有问题，请联系管理员 |
+                <a href="https://github.com/fishcg/pr-review/issues/new" target="_blank">GitHub</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

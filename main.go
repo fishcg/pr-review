@@ -17,6 +17,7 @@ func main() {
 	router.SetWebhookSecret(AppConfig.GetWebhookSecret())
 
 	// 注册路由
+	http.HandleFunc("/", router.HandleIndex)
 	http.HandleFunc("/review", router.HandleReview)
 	http.HandleFunc("/webhook", router.HandleWebhook)
 	http.HandleFunc("/health", router.HandleHealth)

@@ -18,5 +18,8 @@ FROM 172.24.173.77:30500/alpine:latest
 WORKDIR /app
 # 从 builder 复制 ca-certificates（避免网络问题）
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# 复制二进制文件
 COPY --from=builder /app/pr-review-service .
+# 复制静态文件
+COPY --from=builder /app/static ./static
 CMD ["./pr-review-service"]
