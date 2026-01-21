@@ -15,21 +15,25 @@ spec:
     spec:
       containers:
         - name: server
-          image: <你的镜像地址>/pr-review-service:v1 # 替换这里
+          image: 172.24.173.77:30500/pr-review:0.0.1
           imagePullPolicy: IfNotPresent
-          env:
-            # 指向你的 AI 服务
-            - name: AI_API_URL
-              value: "http://ai-analyze-service.default.svc.cluster.local:7992/analyze"
           ports:
-            - containerPort: 8080
+            - containerPort: 7995
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
           resources:
             requests: # 这种服务非常省资源
               memory: "20Mi"
               cpu: "10m"
             limits:
-              memory: "100Mi"
-              cpu: "200m"
+              memory: "40Mi"
+              cpu: "20m"
+      volumes:
+        - name: config
+          configMap:
+            name: pr-review-config
 ---
 apiVersion: v1
 kind: Service
@@ -37,9 +41,88 @@ metadata:
   name: pr-review-service
   namespace: default
 spec:
+  type: NodePort
   selector:
     app: pr-review
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 8080
+      port: 7995
+      targetPort: 7995
+      nodePort: 30095
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pr-review-config
+  namespace: default
+data:
+  config.yaml: |
+    # PR Review Service Configuration
+
+    # AI Service URL (required)
+    ai_api_url: "http://ai-info-service:3128/chat/completions"
+
+    # AI API Key (required for AI service authentication)
+    ai_api_key: "test-api-key"
+
+    # AI Model name (default: qwen-plus-latest)
+    ai_model: "qwen-max-latest"
+
+    # Service port (default: 7995)
+    port: "7995"
+
+    # GitHub Personal Access Token (required for API access)
+    # Needs permissions: repo (for private repos) or public_repo (for public repos)
+    github_token: "test-github-token"
+
+    # AI Review Prompts
+    # System prompt - defines the AI's role and behavior
+    system_prompt: |
+      你是一个资深的代码审查专家，拥有 10 年以上的软件开发经验。
+      你擅长发现代码中的问题，包括但不限于：Bug、安全漏洞、性能问题、代码规范、最佳实践等。
+      请始终保持专业、客观、建设性的态度，用中文回复，使用 Markdown 格式。
+
+    # User prompt template - the actual review request
+    # Use {diff} as placeholder for the code diff
+    user_prompt_template: |
+      请对以下 Pull Request 的代码变更进行全面审查，并按照以下格式输出：
+
+      ## 📊 代码质量评分
+      **总分: 95**  （满分 100 分，如果有严重 bug 则低于 60，如果有语法错误为 0 分，lint 问题最多扣 5到10 分）
+
+      ## 🔍 审查要点
+
+      ### ✅ 做得好的地方
+      - （列出代码中值得肯定的部分）
+
+      ### ⚠️ 需要注意的问题
+      #### 严重问题 (必须修复)
+      - **[文件:行号]** 问题描述
+        - 原因分析
+        - 修改建议
+
+      #### 建议优化 (可选)
+      - **[文件:行号]** 问题描述
+        - 优化建议
+
+      ### 🔒 安全检查
+      - SQL 注入风险检查
+      - XSS 跨站脚本检查
+      - 敏感信息泄露检查
+      - 权限控制检查
+      - 其他安全问题
+
+      ### ⚡ 性能建议
+      - （如有性能问题或优化建议）
+
+      ### 📝 代码规范
+      - （命名规范、注释、格式等）
+
+      ## 💡 总体建议
+      （总结性的建议和改进方向）
+
+      ---
+      **代码变更内容：**
+      ```diff
+      {diff}
+      ```
