@@ -161,7 +161,13 @@ jobs:
 
 ```
 .
-├── main.go              # 主程序
+├── main.go              # 程序入口，启动逻辑
+├── config.go            # 配置管理
+├── lib/                 # 第三方服务集成库
+│   ├── ai.go           # AI 服务客户端
+│   └── github.go       # GitHub API 客户端
+├── router/              # HTTP 路由处理
+│   └── handler.go      # 请求处理器
 ├── config.yaml          # 配置文件（不提交到 git）
 ├── config.yaml.example  # 配置文件示例
 ├── Dockerfile           # Docker 构建文件
@@ -169,6 +175,27 @@ jobs:
 ├── go.mod              # Go 依赖管理
 └── README.md           # 说明文档
 ```
+
+### 代码架构
+
+**根目录**
+- **main.go** - 程序入口点，负责加载配置、设置路由和启动 HTTP 服务器
+- **config.go** - 配置文件加载、验证和访问接口
+
+**lib/** - 第三方服务集成
+- **ai.go** - AI 服务客户端，负责调用 AI 进行代码审查
+  - `AIClient` - AI 客户端结构体
+  - `ReviewCode()` - 调用 AI 审查代码
+- **github.go** - GitHub API 客户端，处理 PR diff 获取和评论发布
+  - `GitHubClient` - GitHub 客户端结构体
+  - `GetPRDiff()` - 获取 PR 代码变更
+  - `PostComment()` - 发布评论到 PR
+
+**router/** - HTTP 路由和业务逻辑
+- **handler.go** - HTTP 路由处理器，协调整个审查流程
+  - `HandleReview()` - 处理审查请求
+  - `HandleHealth()` - 健康检查
+  - `ProcessReview()` - 完整的审查流程编排
 
 ### 技术栈
 
