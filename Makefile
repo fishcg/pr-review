@@ -1,6 +1,6 @@
 NAME=pr-review
 VERSION=0.0.1
-REGISTRY_PREFIX=TODO
+REGISTRY_PREFIX=172.24.173.77:30500/
 
 # .PHONY: build publish version
 
