@@ -49,12 +49,14 @@ func NewAIClient(apiURL, apiKey, model, systemPrompt, userTemplate string) *AICl
 		Model:        model,
 		SystemPrompt: systemPrompt,
 		UserTemplate: userTemplate,
-		HTTPClient:   &http.Client{Timeout: 60 * time.Second},
+		HTTPClient:   &http.Client{Timeout: 180 * time.Second},
 	}
 }
 
 // ReviewCode 调用 AI 服务审查代码
 func (c *AIClient) ReviewCode(diffText string) (string, error) {
+	log.Printf("AI Client timeout configured: %v", c.HTTPClient.Timeout)
+
 	// 使用配置的 prompt 模板，替换 {diff} 占位符
 	userPrompt := strings.ReplaceAll(c.UserTemplate, "{diff}", diffText)
 
@@ -88,11 +90,18 @@ func (c *AIClient) ReviewCode(diffText string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
+	log.Printf("Sending AI request to: %s", c.APIUrl)
+	startTime := time.Now()
+
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("AI service call failed: %w", err)
+		elapsed := time.Since(startTime)
+		return "", fmt.Errorf("AI service call failed after %v: %w", elapsed, err)
 	}
 	defer resp.Body.Close()
+
+	elapsed := time.Since(startTime)
+	log.Printf("AI service responded in %v with status: %d", elapsed, resp.StatusCode)
 
 	aiBody, err := io.ReadAll(resp.Body)
 	if err != nil {
