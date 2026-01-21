@@ -308,22 +308,34 @@
         <div class="main-content">
             <!-- 产品介绍 -->
             <section id="intro">
-                <h2>产品介绍</h2>
+                <h2>项目介绍</h2>
                 <p style="font-size: 1.1rem; color: #555; line-height: 1.8;">
-                    AI PR Review 是一个基于人工智能的代码审查服务，能够自动分析 GitHub Pull Request 中的代码变更，
+                    <strong>pr-review</strong> 是一个开源的 AI 代码审查工具，能够自动分析 GitHub Pull Request 中的代码变更，
                     发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
-                    帮助团队提高代码质量，减少人工审查工作量。
                 </p>
+                <p style="font-size: 1.1rem; color: #555; line-height: 1.8; margin-top: 15px;">
+                    🎯 <strong>零成本构建你的 AI 代码审查 CI 流程</strong> - 支持私有部署，数据完全可控，
+                    可自定义 AI 模型和审查提示词，轻松集成到现有的开发工作流中。
+                </p>
+                <div style="margin-top: 25px;">
+                    <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">🌟 GitHub 仓库</a>
+                    <a href="https://github.com/fishcg/pr-review/releases" class="btn" target="_blank">📦 下载发布版</a>
+                </div>
             </section>
 
             <!-- 核心功能 -->
             <section id="features">
-                <h2>核心功能</h2>
+                <h2>核心特性</h2>
                 <div class="features">
                     <div class="feature-card">
-                        <div class="feature-icon">🔍</div>
-                        <h3>智能代码分析</h3>
-                        <p>AI 深度分析代码变更，识别 Bug、安全漏洞、性能问题等多维度问题</p>
+                        <div class="feature-icon">🏠</div>
+                        <h3>私有部署</h3>
+                        <p>支持 Docker、Kubernetes 等多种部署方式，数据完全可控，不依赖第三方服务</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔧</div>
+                        <h3>高度可定制</h3>
+                        <p>自定义 AI 模型、审查提示词、评分标准，打造专属的代码审查风格</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">⚡</div>
@@ -331,68 +343,135 @@
                         <p>通过 GitHub Webhook 自动触发，PR 有新提交时立即进行审查</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🎯</div>
-                        <h3>精准评分</h3>
-                        <p>提供 100 分制代码质量评分，直观展示代码质量水平</p>
+                        <div class="feature-icon">🔍</div>
+                        <h3>智能分析</h3>
+                        <p>AI 深度分析代码变更，识别 Bug、安全漏洞、性能问题等多维度问题</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">💡</div>
-                        <h3>改进建议</h3>
-                        <p>不仅指出问题，还提供具体的修改建议和最佳实践</p>
+                        <div class="feature-icon">🪶</div>
+                        <h3>轻量高效</h3>
+                        <p>Go 编写，单二进制文件，资源占用极低（20MB 内存即可运行）</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🔒</div>
-                        <h3>安全检查</h3>
-                        <p>专门的安全审查，检测 SQL 注入、XSS、敏感信息泄露等安全风险</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📊</div>
-                        <h3>多维度分析</h3>
-                        <p>从代码规范、性能、安全、可维护性等多个维度进行全面分析</p>
+                        <div class="feature-icon">🌐</div>
+                        <h3>开源免费</h3>
+                        <p>MIT 协议，完全开源，可自由修改和商业使用</p>
                     </div>
                 </div>
             </section>
 
             <!-- 快速开始 -->
             <section id="quick-start">
-                <h2>快速开始</h2>
+                <h2>快速部署</h2>
+
+                <h3 style="color: #667eea; margin: 30px 0 15px 0; font-size: 1.3rem;">方式一：Docker 部署</h3>
 
                 <div class="step">
                     <span class="step-number">1</span>
-                    <strong>配置 GitHub Webhook</strong>
-                    <p style="margin-top: 10px;">在仓库 Settings → Webhooks 中添加 Webhook，Payload URL 填写：</p>
-                    <pre>https://ai.acgay.cn/webhook</pre>
-                    <p>选择事件：Pull requests</p>
+                    <strong>克隆项目</strong>
+<pre>git clone https://github.com/fishcg/pr-review.git
+cd pr-review</pre>
                 </div>
 
                 <div class="step">
                     <span class="step-number">2</span>
-                    <strong>等待自动触发</strong>
-                    <p style="margin-top: 10px;">创建或更新 PR 时，服务会自动进行代码审查</p>
+                    <strong>配置服务</strong>
+                    <p style="margin-top: 10px;">复制配置模板并修改：</p>
+<pre>cp config.yaml.example config.yaml
+# 编辑 config.yaml，填写：
+# - github_token: GitHub Personal Access Token
+# - ai_api_url: AI 服务地址（支持 OpenAI 兼容接口）
+# - ai_api_key: AI API Key</pre>
                 </div>
 
                 <div class="step">
                     <span class="step-number">3</span>
-                    <strong>查看审查结果</strong>
-                    <p style="margin-top: 10px;">AI 会在 PR 中自动发布评论，包含详细的审查报告</p>
+                    <strong>构建并运行</strong>
+<pre>docker build -t pr-review .
+docker run -d -p 7995:7995 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  pr-review</pre>
+                </div>
+
+                <h3 style="color: #667eea; margin: 30px 0 15px 0; font-size: 1.3rem;">方式二：Kubernetes 部署</h3>
+
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>创建 ConfigMap</strong>
+                    <p style="margin-top: 10px;">将 config.yaml 内容添加到 k8s.yaml 的 ConfigMap 中</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>部署到集群</strong>
+<pre>kubectl apply -f k8s.yaml</pre>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>配置 GitHub Webhook</strong>
+                    <p style="margin-top: 10px;">在仓库 Settings → Webhooks 中添加：</p>
+<pre>Payload URL: http://your-service-url/webhook
+Content type: application/json
+Events: Pull requests</pre>
                 </div>
 
                 <div class="info-box">
-                    <strong>💡 提示：</strong> 也可以通过 API 手动触发审查，详见下方 API 文档
+                    <strong>💡 提示：</strong> 详细配置说明请查看项目仓库中的 README.md 和 WEBHOOK_SETUP.md
                 </div>
             </section>
 
-            <!-- API 文档 -->
+            <!-- 配置说明 -->
+            <section id="config">
+                <h2>配置说明</h2>
+
+                <p style="margin-bottom: 20px;">config.yaml 主要配置项：</p>
+
+                <div class="api-endpoint">
+                    <h4>🔑 GitHub 配置</h4>
+<pre><code>github_token: "ghp_xxxxx"  # GitHub Personal Access Token
+                              # 需要 repo 权限用于读取 PR 和发布评论
+
+webhook_secret: ""         # Webhook 签名密钥（可选，建议配置）</code></pre>
+                </div>
+
+                <div class="api-endpoint">
+                    <h4>🤖 AI 服务配置</h4>
+<pre><code>ai_api_url: "http://your-ai-service/chat/completions"
+                              # 支持 OpenAI 兼容接口
+
+ai_api_key: "sk-xxxxx"     # AI API Key
+
+ai_model: "qwen-max-latest" # 模型名称
+                              # 支持：qwen-max、gpt-4、claude 等</code></pre>
+                </div>
+
+                <div class="api-endpoint">
+                    <h4>📝 审查提示词（可自定义）</h4>
+<pre><code>system_prompt: |          # 定义 AI 角色和行为
+  你是一个资深的代码审查专家...
+
+user_prompt_template: |   # 审查请求模板
+  请对以下代码变更进行审查...
+  {diff}                  # 代码差异占位符</code></pre>
+                </div>
+
+                <div class="info-box">
+                    <strong>💡 提示：</strong> 完整配置示例见 <code>config.yaml.example</code>，可根据团队需求自定义审查标准和输出格式
+                </div>
+            </section>
+
+            <!-- API 端点 -->
             <section id="api">
-                <h2>API 文档</h2>
+                <h2>API 端点</h2>
 
                 <div class="api-endpoint">
                     <h4>
                         <span class="method post">POST</span>
                         <span class="endpoint-path">/webhook</span>
                     </h4>
-                    <p><strong>说明：</strong>GitHub Webhook 接收端点（自动触发）</p>
-                    <p><strong>触发时机：</strong>PR 创建、更新、重新打开时自动调用</p>
+                    <p><strong>说明：</strong>接收 GitHub Webhook 事件</p>
+                    <p><strong>触发时机：</strong>PR 创建、更新、重新打开</p>
                 </div>
 
                 <div class="api-endpoint">
@@ -406,14 +485,6 @@
   "repo": "owner/repository",
   "pr_number": 123
 }</code></pre>
-                    <p><strong>示例：</strong></p>
-<pre><code>curl -X POST https://ai.acgay.cn/review \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repo": "username/my-project",
-    "pr_number": 42
-  }'</code></pre>
-                    <p><strong>响应：</strong>202 Accepted - Review started for username/my-project #42</p>
                 </div>
 
                 <div class="api-endpoint">
@@ -421,43 +492,75 @@
                         <span class="method get">GET</span>
                         <span class="endpoint-path">/health</span>
                     </h4>
-                    <p><strong>说明：</strong>健康检查端点</p>
-                    <p><strong>响应：</strong>200 OK - ok</p>
-                </div>
-
-                <div class="warning-box">
-                    <strong>⚠️ 注意：</strong> 审查过程是异步执行的，API 会立即返回，实际审查结果会在几秒到几十秒后发布到 PR 评论中。
+                    <p><strong>说明：</strong>健康检查</p>
                 </div>
             </section>
 
             <!-- 技术架构 -->
             <section id="tech">
-                <h2>技术架构</h2>
+                <h2>技术栈</h2>
                 <div class="features">
                     <div class="feature-card">
                         <div class="feature-icon">🔧</div>
-                        <h3>后端框架</h3>
-                        <p>Go + 标准库 net/http，轻量高效</p>
+                        <h3>后端</h3>
+                        <p>Go 1.23+，零依赖标准库，编译后单一二进制文件</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🤖</div>
-                        <h3>AI 引擎</h3>
-                        <p>支持通义千问等主流大语言模型</p>
+                        <h3>AI 集成</h3>
+                        <p>支持 OpenAI、通义千问、Claude 等 OpenAI 兼容接口</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">☁️</div>
-                        <h3>部署方式</h3>
-                        <p>Kubernetes + Docker，云原生架构</p>
+                        <h3>部署</h3>
+                        <p>Docker、Kubernetes、二进制直接运行，多种方式可选</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 使用场景 -->
+            <section id="use-cases">
+                <h2>适用场景</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">🏢</div>
+                        <h3>企业团队</h3>
+                        <p>私有部署，数据安全可控，可定制审查标准</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">👥</div>
+                        <h3>开源项目</h3>
+                        <p>提高代码审查效率，保持代码质量一致性</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎓</div>
+                        <h3>教学项目</h3>
+                        <p>自动化代码评审，帮助学生提高编码能力</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <h3>安全审计</h3>
+                        <p>自动检测常见安全漏洞，提前发现风险</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>CI/CD 集成</h3>
+                        <p>无缝集成到现有 CI 流程，自动化审查</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔬</div>
+                        <h3>代码质量监控</h3>
+                        <p>持续跟踪代码质量，建立质量基线</p>
                     </div>
                 </div>
             </section>
 
             <!-- 示例输出 -->
             <section id="example">
-                <h2>审查报告示例</h2>
-                <p>AI 会生成结构化的审查报告，包含以下内容：</p>
+                <h2>审查报告</h2>
+                <p style="margin-bottom: 15px;">AI 会在 PR 中自动发布结构化的审查报告：</p>
                 <ul style="margin: 20px 0 20px 30px; line-height: 2;">
-                    <li>📊 <strong>代码质量评分</strong> - 总分及评分说明</li>
+                    <li>📊 <strong>代码质量评分</strong> - 100 分制，直观展示质量水平</li>
                     <li>✅ <strong>做得好的地方</strong> - 值得肯定的代码实现</li>
                     <li>⚠️ <strong>需要注意的问题</strong> - 严重问题和优化建议</li>
                     <li>🔒 <strong>安全检查</strong> - SQL注入、XSS、敏感信息泄露等</li>
@@ -465,6 +568,39 @@
                     <li>📝 <strong>代码规范</strong> - 命名、注释、格式等</li>
                     <li>💡 <strong>总体建议</strong> - 改进方向总结</li>
                 </ul>
+                <div class="info-box" style="margin-top: 20px;">
+                    <strong>💡 自定义审查标准：</strong> 可在 config.yaml 中修改 system_prompt 和 user_prompt_template，
+                    定制符合团队规范的审查风格和输出格式
+                </div>
+            </section>
+
+            <!-- 贡献指南 -->
+            <section id="contribute">
+                <h2>参与贡献</h2>
+                <p style="font-size: 1.1rem; line-height: 1.8; margin-bottom: 20px;">
+                    pr-review 是一个开源项目，欢迎任何形式的贡献！
+                </p>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">🐛</div>
+                        <h3>报告问题</h3>
+                        <p>发现 Bug？在 GitHub Issues 提交问题报告</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">✨</div>
+                        <h3>提交 PR</h3>
+                        <p>修复 Bug、添加新功能，欢迎提交 Pull Request</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <h3>完善文档</h3>
+                        <p>改进文档、添加示例，帮助更多人使用</p>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">⭐ Star on GitHub</a>
+                    <a href="https://github.com/fishcg/pr-review/fork" class="btn" target="_blank">🍴 Fork 项目</a>
+                </div>
             </section>
         </div>
 
