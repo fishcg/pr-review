@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 go build -o pr-review-service .
 # 运行阶段 (极小镜像)
 FROM 172.24.173.77:30500/alpine:latest
 WORKDIR /app
-# 安装 ca-certificates 否则无法访问 github https
-RUN apk --no-cache add ca-certificates
+# 从 builder 复制 ca-certificates（避免网络问题）
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/pr-review-service .
 CMD ["./pr-review-service"]
