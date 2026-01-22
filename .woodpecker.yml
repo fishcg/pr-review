@@ -6,6 +6,10 @@ clone:
       depth: 1
       # 增加重试次数
       tags: true
+    environment:
+      - https_proxy=http://172.24.173.76:7899
+      - http_proxy=http://172.24.173.76:7899
+      - no_proxy=localhost,127.0.0.1,10.42.0.0/16,10.43.0.0/16,172.24.173.77
 steps:
   build-and-push:
     image: 172.24.173.77:30500/standard-docker:latest

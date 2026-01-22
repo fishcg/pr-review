@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"pr-review/lib"
+	"strconv"
+	"strings"
 )
 
 // ReviewRequest PR 审查请求体结构
@@ -18,6 +20,7 @@ type ReviewRequest struct {
 type Config interface {
 	GetGithubToken() string
 	GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplate string)
+	GetInlineIssueComment() bool
 }
 
 var appConfig Config
@@ -98,13 +101,538 @@ func ProcessReview(repo string, prNum int, token string) {
 	}
 
 	// === C. 发布评论到 GitHub ===
-	log.Printf("📝 [%s#%d] Posting review comment...", repo, prNum)
+	inlineMode := appConfig.GetInlineIssueComment()
+	log.Printf("📝 [%s#%d] Posting review comment... (inline: %v)", repo, prNum, inlineMode)
 
 	comment := fmt.Sprintf("🤖 **AI Code Review**\n\n%s", reviewContent)
+	if inlineMode {
+		headSHA, err := ghClient.GetPRHeadSHA(repo, prNum)
+		if err != nil {
+			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
+			return
+		}
+
+		diffPositionMap := buildDiffPositionMap(diffText)
+		issues := parseIssuesFromReview(reviewContent)
+		unmatched := postInlineIssues(repo, prNum, headSHA, ghClient, diffPositionMap, issues)
+
+		summary := buildSummaryComment(reviewContent)
+		if strings.TrimSpace(summary) == "" {
+			summary = "（未能解析评分/修改点/总结）"
+		}
+		unmatchedSummary := buildUnmatchedIssuesTable(unmatched)
+		if unmatchedSummary != "" {
+			summary = strings.TrimSpace(summary + "\n\n" + unmatchedSummary)
+		}
+		comment = fmt.Sprintf("🤖 **AI Code Review**\n\n%s", summary)
+	}
 	if err := ghClient.PostComment(repo, prNum, comment); err != nil {
 		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 		return
 	}
 
 	log.Printf("✅ [%s#%d] Review completed successfully!", repo, prNum)
+}
+
+type reviewIssue struct {
+	File       string
+	Side       string
+	OldLine    int
+	NewLine    int
+	Code       string
+	Severity   string
+	Category   string
+	Problem    string
+	Suggestion string
+}
+
+func buildSummaryComment(content string) string {
+	sections := []string{
+		extractMarkdownSection(content, "评分"),
+		extractMarkdownSection(content, "修改点"),
+		extractMarkdownSection(content, "总结"),
+	}
+
+	var parts []string
+	for _, section := range sections {
+		if strings.TrimSpace(section) != "" {
+			parts = append(parts, strings.TrimSpace(section))
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func extractMarkdownSection(content, title string) string {
+	lines := strings.Split(content, "\n")
+	var buf []string
+	found := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			heading := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			heading = strings.TrimSuffix(heading, ":")
+			if found {
+				break
+			}
+			if strings.HasPrefix(heading, title) {
+				found = true
+				buf = append(buf, line)
+				continue
+			}
+		}
+
+		if found {
+			buf = append(buf, line)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(buf, "\n"))
+}
+
+func parseIssuesFromReview(content string) []reviewIssue {
+	lines := strings.Split(content, "\n")
+	issues := make([]reviewIssue, 0)
+
+	for _, line := range lines {
+		normalized := strings.ReplaceAll(line, "｜", "|")
+		if !strings.Contains(normalized, "|") {
+			continue
+		}
+
+		cells := splitTableRow(normalized)
+		if len(cells) < 5 {
+			continue
+		}
+
+		if strings.Contains(cells[0], "文件名") || strings.Contains(cells[0], "---") {
+			continue
+		}
+
+		if len(cells) >= 6 {
+			file := strings.Trim(cells[0], "` ")
+			oldLine := parseLineNumber(cells[1])
+			newLine := parseLineNumber(cells[2])
+			if file == "" || (oldLine == 0 && newLine == 0) {
+				continue
+			}
+			codeSnippet := ""
+			severityIndex := 3
+			if len(cells) >= 8 {
+				codeSnippet = strings.Trim(cells[3], "` ")
+				severityIndex = 4
+			}
+			issues = append(issues, reviewIssue{
+				File:       file,
+				OldLine:    oldLine,
+				NewLine:    newLine,
+				Code:       codeSnippet,
+				Severity:   strings.TrimSpace(cells[severityIndex]),
+				Category:   strings.TrimSpace(cells[severityIndex+1]),
+				Problem:    strings.TrimSpace(cells[severityIndex+2]),
+				Suggestion: "",
+			})
+			if len(cells) > severityIndex+3 {
+				issues[len(issues)-1].Suggestion = strings.TrimSpace(cells[severityIndex+3])
+			}
+			continue
+		}
+
+		file, lineNum, side, ok := parseFileLine(cells[0])
+		if !ok {
+			continue
+		}
+
+		issues = append(issues, reviewIssue{
+			File:       file,
+			Side:       side,
+			OldLine:    0,
+			NewLine:    lineNum,
+			Code:       "",
+			Severity:   strings.TrimSpace(cells[1]),
+			Category:   strings.TrimSpace(cells[2]),
+			Problem:    strings.TrimSpace(cells[3]),
+			Suggestion: strings.TrimSpace(cells[4]),
+		})
+	}
+
+	return issues
+}
+
+func splitTableRow(line string) []string {
+	raw := strings.Split(line, "|")
+	cells := make([]string, 0, len(raw))
+	for _, cell := range raw {
+		trimmed := strings.TrimSpace(cell)
+		if trimmed == "" {
+			continue
+		}
+		cells = append(cells, trimmed)
+	}
+	return cells
+}
+
+func parseFileLine(input string) (string, int, string, bool) {
+	trimmed := strings.TrimSpace(input)
+	side := ""
+	if strings.HasPrefix(trimmed, "+") {
+		side = "RIGHT"
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "+"))
+	} else if strings.HasPrefix(trimmed, "-") {
+		side = "LEFT"
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
+	}
+
+	parts := strings.SplitN(trimmed, ":", 2)
+	if len(parts) != 2 {
+		return "", 0, "", false
+	}
+
+	file := strings.Trim(parts[0], "` ")
+	lineStr := strings.Trim(parts[1], "` ")
+	lineNum, err := strconv.Atoi(lineStr)
+	if err != nil || lineNum <= 0 {
+		return "", 0, "", false
+	}
+
+	return file, lineNum, side, true
+}
+
+func parseLineNumber(input string) int {
+	trimmed := strings.TrimSpace(strings.Trim(input, "` "))
+	if trimmed == "" || trimmed == "-" {
+		return 0
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+type diffLineInfo struct {
+	Position int
+	Content  string
+}
+
+type diffPositionLines struct {
+	Old map[int]diffLineInfo
+	New map[int]diffLineInfo
+}
+
+func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
+	lineMap := make(map[string]diffPositionLines)
+
+	var currentFile string
+	var oldLine int
+	var newLine int
+	var inPatch bool
+	var inHunk bool
+	var position int
+
+	lines := strings.Split(diffText, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "diff --git ") {
+			currentFile = ""
+			oldLine = 0
+			newLine = 0
+			inPatch = false
+			inHunk = false
+			position = 0
+			continue
+		}
+
+		if strings.HasPrefix(line, "+++ ") && !strings.HasPrefix(line, "+++ b/") {
+			currentFile = ""
+			oldLine = 0
+			newLine = 0
+			inPatch = false
+			inHunk = false
+			position = 0
+			continue
+		}
+
+		if strings.HasPrefix(line, "+++ b/") {
+			currentFile = strings.TrimSpace(strings.TrimPrefix(line, "+++ b/"))
+			oldLine = 0
+			newLine = 0
+			inPatch = true
+			inHunk = false
+			position = 0
+			if currentFile != "" {
+				if _, ok := lineMap[currentFile]; !ok {
+					lineMap[currentFile] = diffPositionLines{
+						Old: make(map[int]diffLineInfo),
+						New: make(map[int]diffLineInfo),
+					}
+				}
+			}
+			continue
+		}
+
+		if !inPatch || currentFile == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "@@") {
+			oldLine = parseOldHunkStart(line)
+			newLine = parseNewHunkStart(line)
+			inHunk = true
+			continue
+		}
+
+		if !inHunk || (oldLine == 0 && newLine == 0) {
+			continue
+		}
+
+		if line == "\\ No newline at end of file" {
+			continue
+		}
+
+		position++
+		if strings.HasPrefix(line, "+") {
+			lineMap[currentFile].New[newLine] = diffLineInfo{
+				Position: position,
+				Content:  strings.TrimPrefix(line, "+"),
+			}
+			newLine++
+			continue
+		}
+		if strings.HasPrefix(line, "-") {
+			lineMap[currentFile].Old[oldLine] = diffLineInfo{
+				Position: position,
+				Content:  strings.TrimPrefix(line, "-"),
+			}
+			oldLine++
+			continue
+		}
+		if strings.HasPrefix(line, " ") {
+			trimmed := strings.TrimPrefix(line, " ")
+			lineMap[currentFile].Old[oldLine] = diffLineInfo{
+				Position: position,
+				Content:  trimmed,
+			}
+			lineMap[currentFile].New[newLine] = diffLineInfo{
+				Position: position,
+				Content:  trimmed,
+			}
+			oldLine++
+			newLine++
+		}
+	}
+
+	return lineMap
+}
+
+func parseNewHunkStart(hunkLine string) int {
+	parts := strings.Split(hunkLine, " ")
+	if len(parts) < 3 {
+		return 0
+	}
+
+	newPart := strings.TrimPrefix(parts[2], "+")
+	newPart = strings.SplitN(newPart, ",", 2)[0]
+	newLine, err := strconv.Atoi(newPart)
+	if err != nil {
+		return 0
+	}
+
+	return newLine
+}
+
+func parseOldHunkStart(hunkLine string) int {
+	parts := strings.Split(hunkLine, " ")
+	if len(parts) < 2 {
+		return 0
+	}
+
+	oldPart := strings.TrimPrefix(parts[1], "-")
+	oldPart = strings.SplitN(oldPart, ",", 2)[0]
+	oldLine, err := strconv.Atoi(oldPart)
+	if err != nil {
+		return 0
+	}
+
+	return oldLine
+}
+
+func postInlineIssues(repo string, prNum int, headSHA string, ghClient *lib.GitHubClient, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
+	unmatched := make([]reviewIssue, 0)
+	for _, issue := range issues {
+		fileLines, ok := positionMap[issue.File]
+		if !ok {
+			log.Printf("⚠️ [%s#%d] File not in diff for inline comment: %s", repo, prNum, issue.File)
+			unmatched = append(unmatched, issue)
+			continue
+		}
+
+		lineInfo, ok := resolveLineInfo(fileLines, issue)
+		if !ok {
+			log.Printf("⚠️ [%s#%d] Line not in diff for inline comment: %s (old:%d new:%d)", repo, prNum, issue.File, issue.OldLine, issue.NewLine)
+			unmatched = append(unmatched, issue)
+			continue
+		}
+
+		body := buildInlineBody(issue)
+		if err := ghClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineInfo.Position, body); err != nil {
+			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
+			unmatched = append(unmatched, issue)
+		}
+	}
+	return unmatched
+}
+
+func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineInfo, bool) {
+	if issue.Code != "" && isInvalidSnippet(issue.Code) {
+		return diffLineInfo{}, false
+	}
+
+	if issue.Side == "RIGHT" && issue.NewLine > 0 {
+		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(issue.Code, info.Content) {
+			return info, true
+		}
+	}
+	if issue.Side == "LEFT" && issue.OldLine > 0 {
+		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(issue.Code, info.Content) {
+			return info, true
+		}
+	}
+
+	if issue.NewLine > 0 {
+		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(issue.Code, info.Content) {
+			return info, true
+		}
+	}
+	if issue.OldLine > 0 {
+		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(issue.Code, info.Content) {
+			return info, true
+		}
+	}
+
+	if issue.Code != "" {
+		if info, ok := findBySnippet(fileLines.New, issue.Code); ok {
+			return info, true
+		}
+		if info, ok := findBySnippet(fileLines.Old, issue.Code); ok {
+			return info, true
+		}
+		return diffLineInfo{}, false
+	}
+
+	if issue.NewLine > 0 {
+		if info, ok := fileLines.New[issue.NewLine]; ok {
+			return info, true
+		}
+	}
+	if issue.OldLine > 0 {
+		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			return info, true
+		}
+	}
+
+	return diffLineInfo{}, false
+}
+
+func lineMatches(snippet, content string) bool {
+	normalizedSnippet := normalizeSnippet(snippet)
+	if normalizedSnippet == "" {
+		return true
+	}
+	normalizedContent := normalizeSnippet(content)
+	return strings.Contains(normalizedContent, normalizedSnippet)
+}
+
+func normalizeSnippet(input string) string {
+	trimmed := strings.TrimSpace(strings.Trim(input, "`"))
+	if trimmed == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(trimmed), " ")
+}
+
+func isInvalidSnippet(snippet string) bool {
+	normalized := normalizeSnippet(snippet)
+	if normalized == "" {
+		return true
+	}
+	if strings.Contains(normalized, "...") || strings.Contains(normalized, "…") {
+		return true
+	}
+	return false
+}
+
+func findBySnippet(lines map[int]diffLineInfo, snippet string) (diffLineInfo, bool) {
+	normalized := normalizeSnippet(snippet)
+	if normalized == "" {
+		return diffLineInfo{}, false
+	}
+	var match diffLineInfo
+	matchCount := 0
+	for _, info := range lines {
+		if strings.Contains(normalizeSnippet(info.Content), normalized) {
+			match = info
+			matchCount++
+			if matchCount > 1 {
+				return diffLineInfo{}, false
+			}
+		}
+	}
+	if matchCount == 1 {
+		return match, true
+	}
+	return diffLineInfo{}, false
+}
+
+func buildInlineBody(issue reviewIssue) string {
+	parts := []string{
+		fmt.Sprintf("**严重程度**: %s", issue.Severity),
+		fmt.Sprintf("**类别**: %s", issue.Category),
+		fmt.Sprintf("**问题**: %s", issue.Problem),
+	}
+	if issue.Suggestion != "" {
+		parts = append(parts, fmt.Sprintf("**建议**: %s", issue.Suggestion))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func buildUnmatchedIssuesTable(issues []reviewIssue) string {
+	if len(issues) == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.WriteString("### 未定位到行的问题\n")
+	builder.WriteString("| 文件名 | 旧行号 | 新行号 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |\n")
+	builder.WriteString("|---|---:|---:|---|---|---|---|---|\n")
+	for _, issue := range issues {
+		builder.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			escapeTable(issue.File),
+			formatLineValue(issue.OldLine),
+			formatLineValue(issue.NewLine),
+			escapeTable(issue.Code),
+			escapeTable(issue.Severity),
+			escapeTable(issue.Category),
+			escapeTable(issue.Problem),
+			escapeTable(issue.Suggestion),
+		))
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+func formatLineValue(value int) string {
+	if value <= 0 {
+		return "-"
+	}
+	return strconv.Itoa(value)
+}
+
+func escapeTable(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "-"
+	}
+	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
+	trimmed = strings.ReplaceAll(trimmed, "|", "\\|")
+	return trimmed
 }

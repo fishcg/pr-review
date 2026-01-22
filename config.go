@@ -15,6 +15,7 @@ type Config struct {
 	Port               string `yaml:"port"`
 	GithubToken        string `yaml:"github_token"`
 	WebhookSecret      string `yaml:"webhook_secret"`
+	InlineIssueComment bool   `yaml:"inline_issue_comment"`
 	SystemPrompt       string `yaml:"system_prompt"`
 	UserPromptTemplate string `yaml:"user_prompt_template"`
 }
@@ -72,4 +73,9 @@ func (c *Config) GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplat
 // GetWebhookSecret 获取 Webhook Secret
 func (c *Config) GetWebhookSecret() string {
 	return c.WebhookSecret
+}
+
+// GetInlineIssueComment 是否开启行内问题评论
+func (c *Config) GetInlineIssueComment() bool {
+	return c.InlineIssueComment
 }

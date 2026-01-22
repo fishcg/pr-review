@@ -86,6 +86,7 @@ ok
 - `ai_api_url`: AI 服务的 API 地址（OpenAI 格式）
 - `ai_api_key`: API 认证密钥
 - `ai_model`: 使用的模型名称（如 `qwen-plus-latest`）
+- `inline_issue_comment`: 开启后，问题拆分为行内评论，PR 大评论仅保留评分/修改点/总结
 
 ### Prompt 配置
 

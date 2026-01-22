@@ -24,17 +24,17 @@ github_token: "ghp_xxxxxxxxxxxxxxxxxxxxx"
 # 如果不填写，则不验证签名（不安全）
 webhook_secret: ""
 
+# Inline issue comments mode (default: false)
+# 开启后，问题会拆分成行内评论，PR 大评论只保留评分/修改点/总结
+inline_issue_comment: false
+
 # AI Review Prompts
 # System prompt - defines the AI's role and behavior
 system_prompt: |
   你是一个专业的代码审查助手。
   审查重点：Bug、安全漏洞、性能问题、代码规范。
   保持简洁、客观、建设性，用中文回复。
-
-# User prompt template - the actual review request
-# Use {diff} as placeholder for the code diff
-user_prompt_template: |
-  审查以下代码变更，Code Review 要点：
+  Code Review 要点：
   1. **逻辑错误与 Bug**：是否存在潜在的逻辑漏洞、边界条件处理不当或空指针风险？
   2. **代码质量与可读性**：是否遵循 Clean Code 原则？变量命名是否清晰？函数是否过长？是否有冗余代码？
   3. **性能优化**：是否存在不必要的循环、内存泄露或可以优化的算法复杂度？
@@ -43,8 +43,15 @@ user_prompt_template: |
   6. **最佳实践**：是否符合该编程语言/框架的主流社区最佳实践？
   7. **文档与注释**：是否有必要的注释和文档？注释是否准确反映代码意图？
   8. 如果代码中有写得棒的地方，也请顺带表扬。
-  
-  用 makrdown 格式，注意下面的括号为输出注意事项，不需要输出，给出简洁的反馈：
+
+# User prompt template - the actual review request
+# Use {diff} as placeholder for the code diff
+user_prompt_template: |
+  审查以下代码变更，用 makrdown 格式，注意下面的括号为输出注意事项，不需要输出，给出简洁的反馈：
+  问题表格必须包含旧行号与新行号两列，并补充触发问题的代码片段（用于定位，必须是 diff 中的单行原文，不允许省略号/多行）：
+  - 新增行：旧行号写 "-"，新行号填实际行号
+  - 删除行：新行号写 "-"，旧行号填实际行号
+  - 修改行：旧/新行号都填
 
   ### 评分: 95（打分标准不要输出：满分 100，严重bug<60，有语法错误=0，轻微问题扣5-10分）
   
@@ -54,7 +61,7 @@ user_prompt_template: |
 
   ### 问题:
   （用表格输出。类别为：lint、bug、enhance）
-  ｜文件名:行号｜ 严重程度 ｜ 类别｜ 问题描述 ｜ 建议修改
+  ｜文件名｜旧行号｜新行号｜代码片段｜ 严重程度 ｜ 类别｜ 问题描述 ｜ 建议修改
 
   ### 总结: 一句话评价，是否建议合入（建议合入时打✅标记，否则打❌）
 
