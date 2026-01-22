@@ -12,13 +12,17 @@ import (
 
 // ReviewRequest PR 审查请求体结构
 type ReviewRequest struct {
-	Repo     string `json:"repo"`      // owner/repo
-	PRNumber int    `json:"pr_number"` // PR ID
+	Repo     string `json:"repo"`                // owner/repo
+	PRNumber int    `json:"pr_number"`           // PR ID
+	Provider string `json:"provider,omitempty"`  // 可选，未指定则使用配置
 }
 
 // Config 配置接口（避免循环依赖）
 type Config interface {
 	GetGithubToken() string
+	GetGitlabToken() string
+	GetGitlabBaseURL() string
+	GetVCSProvider() string
 	GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplate string)
 	GetInlineIssueComment() bool
 }
@@ -37,24 +41,42 @@ func HandleReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. 获取 GitHub Token (优先使用请求头，否则使用配置文件中的)
-	token := r.Header.Get("X-Github-Token")
-	if token == "" {
-		token = appConfig.GetGithubToken()
-	}
-
-	// 2. 解析请求
+	// 1. 解析请求
 	var req ReviewRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📥 Received review request for %s #%d", req.Repo, req.PRNumber)
+	// 2. 确定使用的 VCS Provider（请求中指定 > 配置文件）
+	providerType := req.Provider
+	if providerType == "" {
+		providerType = appConfig.GetVCSProvider()
+	}
 
-	// 3. 异步处理 Review (防止 CI HTTP 请求超时)
+	// 3. 获取对应的 Token
+	var token string
+	switch providerType {
+	case lib.ProviderTypeGitHub:
+		token = r.Header.Get("X-Github-Token")
+		if token == "" {
+			token = appConfig.GetGithubToken()
+		}
+	case lib.ProviderTypeGitLab:
+		token = r.Header.Get("PRIVATE-TOKEN")
+		if token == "" {
+			token = appConfig.GetGitlabToken()
+		}
+	default:
+		http.Error(w, fmt.Sprintf("Unsupported provider: %s", providerType), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("📥 Received review request for %s #%d (provider: %s)", req.Repo, req.PRNumber, providerType)
+
+	// 4. 异步处理 Review (防止 CI HTTP 请求超时)
 	// 如果你希望 CI 等待结果，可以去掉 go 关键字
-	go ProcessReview(req.Repo, req.PRNumber, token)
+	go ProcessReview(req.Repo, req.PRNumber, providerType, token)
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte(fmt.Sprintf("Review started for %s #%d", req.Repo, req.PRNumber)))
@@ -78,18 +100,32 @@ func HandleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 // ProcessReview 处理 PR 审查的完整流程
-func ProcessReview(repo string, prNum int, token string) {
-	// === A. 获取 Diff ===
-	log.Printf("🔍 [%s#%d] Fetching PR diff...", repo, prNum)
+func ProcessReview(repo string, prNum int, providerType string, token string) {
+	// === A. 创建 VCS Provider ===
+	var vcsClient lib.VCSProvider
+	switch providerType {
+	case lib.ProviderTypeGitHub:
+		vcsClient = lib.NewGitHubClient(token)
+	case lib.ProviderTypeGitLab:
+		baseURL := appConfig.GetGitlabBaseURL()
+		vcsClient = lib.NewGitLabClient(token, baseURL)
+	default:
+		log.Printf("❌ [%s#%d] Unsupported provider: %s", repo, prNum, providerType)
+		return
+	}
 
-	ghClient := lib.NewGitHubClient(token)
-	diffText, err := ghClient.GetPRDiff(repo, prNum)
+	log.Printf("🔧 [%s#%d] Using VCS provider: %s", repo, prNum, vcsClient.GetProviderType())
+
+	// === B. 获取 Diff ===
+	log.Printf("🔍 [%s#%d] Fetching diff...", repo, prNum)
+
+	diffText, err := vcsClient.GetDiff(repo, prNum)
 	if err != nil {
 		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 		return
 	}
 
-	// === B. 调用 AI 审查 ===
+	// === C. 调用 AI 审查 ===
 	log.Printf("🤖 [%s#%d] Sending to AI for review...", repo, prNum)
 
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
@@ -100,13 +136,13 @@ func ProcessReview(repo string, prNum int, token string) {
 		return
 	}
 
-	// === C. 发布评论到 GitHub ===
+	// === D. 发布评论 ===
 	inlineMode := appConfig.GetInlineIssueComment()
 	log.Printf("📝 [%s#%d] Posting review comment... (inline: %v)", repo, prNum, inlineMode)
 
 	comment := fmt.Sprintf("🤖 **AI Code Review**\n\n%s", reviewContent)
 	if inlineMode {
-		headSHA, err := ghClient.GetPRHeadSHA(repo, prNum)
+		headSHA, err := vcsClient.GetHeadSHA(repo, prNum)
 		if err != nil {
 			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 			return
@@ -114,7 +150,7 @@ func ProcessReview(repo string, prNum int, token string) {
 
 		diffPositionMap := buildDiffPositionMap(diffText)
 		issues := parseIssuesFromReview(reviewContent)
-		unmatched := postInlineIssues(repo, prNum, headSHA, ghClient, diffPositionMap, issues)
+		unmatched := postInlineIssues(repo, prNum, headSHA, vcsClient, diffPositionMap, issues)
 
 		summary := buildSummaryComment(reviewContent)
 		if strings.TrimSpace(summary) == "" {
@@ -126,7 +162,7 @@ func ProcessReview(repo string, prNum int, token string) {
 		}
 		comment = fmt.Sprintf("🤖 **AI Code Review**\n\n%s", summary)
 	}
-	if err := ghClient.PostComment(repo, prNum, comment); err != nil {
+	if err := vcsClient.PostComment(repo, prNum, comment); err != nil {
 		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 		return
 	}
@@ -457,7 +493,7 @@ func parseOldHunkStart(hunkLine string) int {
 	return oldLine
 }
 
-func postInlineIssues(repo string, prNum int, headSHA string, ghClient *lib.GitHubClient, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
+func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSProvider, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
 	unmatched := make([]reviewIssue, 0)
 	for _, issue := range issues {
 		fileLines, ok := positionMap[issue.File]
@@ -475,7 +511,7 @@ func postInlineIssues(repo string, prNum int, headSHA string, ghClient *lib.GitH
 		}
 
 		body := buildInlineBody(issue)
-		if err := ghClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineInfo.Position, body); err != nil {
+		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineInfo.Position, body); err != nil {
 			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 			unmatched = append(unmatched, issue)
 		}

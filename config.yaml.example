@@ -14,7 +14,13 @@ ai_model: "qwen-plus-latest"
 # Service port (default: 7995)
 port: "7995"
 
-# GitHub Personal Access Token (required for API access)
+# ===== VCS Provider Configuration =====
+# VCS Provider: "github" or "gitlab" (default: github)
+# 选择版本控制系统: github 或 gitlab
+vcs_provider: "github"
+
+# ===== GitHub Configuration =====
+# GitHub Personal Access Token (required when vcs_provider=github)
 # Needs permissions: repo (for private repos) or public_repo (for public repos)
 # 创建 GitHub Token: https://github.com/settings/tokens
 github_token: "ghp_xxxxxxxxxxxxxxxxxxxxx"
@@ -24,6 +30,22 @@ github_token: "ghp_xxxxxxxxxxxxxxxxxxxxx"
 # 如果不填写，则不验证签名（不安全）
 webhook_secret: ""
 
+# ===== GitLab Configuration =====
+# GitLab Personal Access Token (required when vcs_provider=gitlab)
+# Needs scopes: api, read_api, write_repository
+# 创建 GitLab Token: https://gitlab.com/-/profile/personal_access_tokens
+gitlab_token: "glpat-xxxxxxxxxxxxxxxxxxxxx"
+
+# GitLab Instance URL (default: https://gitlab.com)
+# 私有部署填写完整地址，如: https://gitlab.company.com
+# 公网版本可以留空或填写 https://gitlab.com
+gitlab_base_url: ""
+
+# GitLab Webhook Token (optional, but recommended for security)
+# 用于验证 webhook 请求的 token
+gitlab_webhook_token: ""
+
+# ===== Review Settings =====
 # Inline issue comments mode (default: false)
 # 开启后，问题会拆分成行内评论，PR 大评论只保留评分/修改点/总结
 inline_issue_comment: false

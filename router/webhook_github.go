@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"pr-review/lib"
 	"strings"
 )
 
@@ -104,7 +105,7 @@ func HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	token := appConfig.GetGithubToken()
 
 	// 9. 异步触发 review
-	go ProcessReview(repo, prNumber, token)
+	go ProcessReview(repo, prNumber, lib.ProviderTypeGitHub, token)
 
 	// 10. 返回成功响应
 	w.WriteHeader(http.StatusAccepted)

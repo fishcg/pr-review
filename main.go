@@ -14,13 +14,25 @@ func main() {
 
 	// 设置路由器的配置
 	router.SetConfig(&AppConfig)
-	router.SetWebhookSecret(AppConfig.GetWebhookSecret())
 
-	// 注册路由
+	// 注册通用路由
 	http.HandleFunc("/", router.HandleIndex)
 	http.HandleFunc("/review", router.HandleReview)
-	http.HandleFunc("/webhook", router.HandleWebhook)
 	http.HandleFunc("/health", router.HandleHealth)
+
+	// 根据 VCS Provider 注册对应的 webhook 处理器
+	switch AppConfig.VCSProvider {
+	case "github":
+		router.SetWebhookSecret(AppConfig.GetWebhookSecret())
+		http.HandleFunc("/webhook", router.HandleWebhook)
+		log.Printf("🔧 VCS Provider: GitHub")
+	case "gitlab":
+		router.SetGitLabWebhookToken(AppConfig.GetGitlabWebhookToken())
+		http.HandleFunc("/webhook", router.HandleGitLabWebhook)
+		log.Printf("🔧 VCS Provider: GitLab (%s)", AppConfig.GitlabBaseURL)
+	default:
+		log.Fatalf("❌ Unsupported VCS provider: %s", AppConfig.VCSProvider)
+	}
 
 	// 启动服务
 	log.Printf("🚀 PR Review Service started on :%s", AppConfig.Port)

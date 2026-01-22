@@ -175,3 +175,20 @@ func (c *GitHubClient) PostInlineComment(repo string, prNum int, commitSHA, path
 
 	return nil
 }
+
+// === VCSProvider 接口实现 ===
+
+// GetDiff 实现 VCSProvider 接口
+func (c *GitHubClient) GetDiff(repo string, number int) (string, error) {
+	return c.GetPRDiff(repo, number)
+}
+
+// GetHeadSHA 实现 VCSProvider 接口
+func (c *GitHubClient) GetHeadSHA(repo string, number int) (string, error) {
+	return c.GetPRHeadSHA(repo, number)
+}
+
+// GetProviderType 实现 VCSProvider 接口
+func (c *GitHubClient) GetProviderType() string {
+	return ProviderTypeGitHub
+}
