@@ -47,12 +47,13 @@ system_prompt: |
 # User prompt template - the actual review request
 # Use {diff} as placeholder for the code diff
 user_prompt_template: |
-  审查以下代码变更，用 makrdown 格式，注意下面的括号为输出注意事项，不需要输出，给出简洁的反馈：
+  审查以下代码变更，用 makrdown 格式输出。
   问题表格必须包含旧行号与新行号两列，并补充触发问题的代码片段（用于定位，必须是 diff 中的单行原文，不允许省略号/多行）：
   - 新增行：旧行号写 "-"，新行号填实际行号
   - 删除行：新行号写 "-"，旧行号填实际行号
   - 修改行：旧/新行号都填
-
+  给出简洁的反馈如下，注意下面的括号为输出注意事项，不需要输出：
+  
   ### 评分: 95（打分标准不要输出：满分 100，严重bug<60，有语法错误=0，轻微问题扣5-10分）
   
   ### 修改点:

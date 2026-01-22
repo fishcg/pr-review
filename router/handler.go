@@ -603,12 +603,11 @@ func buildUnmatchedIssuesTable(issues []reviewIssue) string {
 
 	var builder strings.Builder
 	builder.WriteString("### 未定位到行的问题\n")
-	builder.WriteString("| 文件名 | 旧行号 | 新行号 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |\n")
-	builder.WriteString("|---|---:|---:|---|---|---|---|---|\n")
+	builder.WriteString("| 文件名 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |\n")
+	builder.WriteString("|---|---|---|---|---|---|\n")
 	for _, issue := range issues {
-		builder.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s | %s |\n",
+		builder.WriteString(fmt.Sprintf("| %s:%s | %s | %s | %s | %s | %s |\n",
 			escapeTable(issue.File),
-			formatLineValue(issue.OldLine),
 			formatLineValue(issue.NewLine),
 			escapeTable(issue.Code),
 			escapeTable(issue.Severity),
