@@ -350,6 +350,7 @@ func parseLineNumber(input string) int {
 type diffLineInfo struct {
 	Position int
 	Content  string
+	Type     string // "+", "-", or " " (context)
 }
 
 type diffPositionLines struct {
@@ -431,6 +432,7 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 			lineMap[currentFile].New[newLine] = diffLineInfo{
 				Position: position,
 				Content:  strings.TrimPrefix(line, "+"),
+				Type:     "+",
 			}
 			newLine++
 			continue
@@ -439,6 +441,7 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 			lineMap[currentFile].Old[oldLine] = diffLineInfo{
 				Position: position,
 				Content:  strings.TrimPrefix(line, "-"),
+				Type:     "-",
 			}
 			oldLine++
 			continue
@@ -448,10 +451,12 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 			lineMap[currentFile].Old[oldLine] = diffLineInfo{
 				Position: position,
 				Content:  trimmed,
+				Type:     " ",
 			}
 			lineMap[currentFile].New[newLine] = diffLineInfo{
 				Position: position,
 				Content:  trimmed,
+				Type:     " ",
 			}
 			oldLine++
 			newLine++
@@ -506,6 +511,13 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		lineInfo, ok := resolveLineInfo(fileLines, issue)
 		if !ok {
 			log.Printf("⚠️ [%s#%d] Line not in diff for inline comment: %s (old:%d new:%d)", repo, prNum, issue.File, issue.OldLine, issue.NewLine)
+			unmatched = append(unmatched, issue)
+			continue
+		}
+
+		// GitLab 不允许在上下文行（未变更的行）上发布评论
+		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab && lineInfo.Type == " " {
+			log.Printf("⚠️ [%s#%d] Skipping context line (not a change): %s line %d", repo, prNum, issue.File, issue.NewLine)
 			unmatched = append(unmatched, issue)
 			continue
 		}
