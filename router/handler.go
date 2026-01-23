@@ -25,6 +25,7 @@ type Config interface {
 	GetVCSProvider() string
 	GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplate string)
 	GetInlineIssueComment() bool
+	GetCommentOnlyChanges() bool
 }
 
 var appConfig Config
@@ -515,11 +516,22 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 			continue
 		}
 
-		// GitLab 不允许在上下文行（未变更的行）上发布评论
-		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab && lineInfo.Type == " " {
-			log.Printf("⚠️ [%s#%d] Skipping context line (not a change): %s line %d", repo, prNum, issue.File, issue.NewLine)
-			unmatched = append(unmatched, issue)
-			continue
+		// 根据配置决定是否跳过上下文行（未修改的行）
+		// GitLab 始终不允许在上下文行上发布评论
+		// 如果开启了 comment_only_changes，GitHub 也跳过上下文行
+		commentOnlyChanges := appConfig.GetCommentOnlyChanges()
+		if lineInfo.Type == " " {
+			if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
+				// GitLab API 不支持在上下文行上评论
+				log.Printf("⚠️ [%s#%d] Skipping context line (GitLab limitation): %s line %d", repo, prNum, issue.File, issue.NewLine)
+				unmatched = append(unmatched, issue)
+				continue
+			} else if commentOnlyChanges {
+				// GitHub 可以评论上下文行，但用户配置了只评论修改的行
+				log.Printf("⚠️ [%s#%d] Skipping context line (comment_only_changes enabled): %s line %d", repo, prNum, issue.File, issue.NewLine)
+				unmatched = append(unmatched, issue)
+				continue
+			}
 		}
 
 		body := buildInlineBody(issue)

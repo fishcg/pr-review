@@ -50,6 +50,11 @@ gitlab_webhook_token: ""
 # 开启后，问题会拆分成行内评论，PR 大评论只保留评分/修改点/总结
 inline_issue_comment: false
 
+# Comment only on changed lines (default: false)
+# 开启后，只对修改的代码行（+/-）发布行内评论，不对未修改的上下文行评论
+# 注意：GitLab 因为 API 限制，无论此配置如何都不会对上下文行评论
+comment_only_changes: false
+
 # AI Review Prompts
 # System prompt - defines the AI's role and behavior
 system_prompt: |

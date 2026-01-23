@@ -13,9 +13,10 @@ type Config struct {
 	AIApiKey           string `yaml:"ai_api_key"`
 	AIModel            string `yaml:"ai_model"`
 	Port               string `yaml:"port"`
-	SystemPrompt       string `yaml:"system_prompt"`
-	UserPromptTemplate string `yaml:"user_prompt_template"`
-	InlineIssueComment bool   `yaml:"inline_issue_comment"`
+	SystemPrompt         string `yaml:"system_prompt"`
+	UserPromptTemplate   string `yaml:"user_prompt_template"`
+	InlineIssueComment   bool   `yaml:"inline_issue_comment"`
+	CommentOnlyChanges   bool   `yaml:"comment_only_changes"` // 只对修改的代码行评论，不对上下文行评论
 
 	// VCS Provider 配置
 	VCSProvider string `yaml:"vcs_provider"` // "github" 或 "gitlab"
@@ -107,6 +108,11 @@ func (c *Config) GetWebhookSecret() string {
 // GetInlineIssueComment 是否开启行内问题评论
 func (c *Config) GetInlineIssueComment() bool {
 	return c.InlineIssueComment
+}
+
+// GetCommentOnlyChanges 是否只对修改的代码行评论
+func (c *Config) GetCommentOnlyChanges() bool {
+	return c.CommentOnlyChanges
 }
 
 // GetVCSProvider 获取 VCS Provider 类型
