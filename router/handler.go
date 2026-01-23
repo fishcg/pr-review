@@ -12,9 +12,9 @@ import (
 
 // ReviewRequest PR 审查请求体结构
 type ReviewRequest struct {
-	Repo     string `json:"repo"`                // owner/repo
-	PRNumber int    `json:"pr_number"`           // PR ID
-	Provider string `json:"provider,omitempty"`  // 可选，未指定则使用配置
+	Repo     string `json:"repo"`               // owner/repo
+	PRNumber int    `json:"pr_number"`          // PR ID
+	Provider string `json:"provider,omitempty"` // 可选，未指定则使用配置
 }
 
 // Config 配置接口（避免循环依赖）
@@ -798,7 +798,7 @@ func buildUnmatchedIssuesTable(issues []reviewIssue) string {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("### 未定位到行的问题\n")
+	builder.WriteString("### 其他问题\n")
 	builder.WriteString("| 文件名 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |\n")
 	builder.WriteString("|---|---|---|---|---|---|\n")
 	for _, issue := range issues {
