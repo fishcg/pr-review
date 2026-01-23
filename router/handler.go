@@ -149,8 +149,29 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 			return
 		}
 
+		// 调试：输出 diff 内容（截断避免过长）
+		diffPreview := diffText
+		if len(diffPreview) > 500 {
+			diffPreview = diffPreview[:500] + "\n...(truncated)"
+		}
+		log.Printf("🔍 [%s#%d] Diff content:\n%s", repo, prNum, diffPreview)
+
 		diffPositionMap := buildDiffPositionMap(diffText)
+
+		// 调试：输出解析后的行号映射
+		for file, lines := range diffPositionMap {
+			log.Printf("🔍 [%s#%d] File: %s, Old lines: %v, New lines: %v",
+				repo, prNum, file, getLineNumbers(lines.Old), getLineNumbers(lines.New))
+		}
+
 		issues := parseIssuesFromReview(reviewContent)
+
+		// 调试：输出 AI 识别的问题行号
+		for _, issue := range issues {
+			log.Printf("🔍 [%s#%d] Issue: file=%s, old=%d, new=%d, side=%s",
+				repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side)
+		}
+
 		unmatched := postInlineIssues(repo, prNum, headSHA, vcsClient, diffPositionMap, issues)
 
 		summary := buildSummaryComment(reviewContent)
@@ -830,4 +851,21 @@ func escapeTable(value string) string {
 	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
 	trimmed = strings.ReplaceAll(trimmed, "|", "\\|")
 	return trimmed
+}
+
+// getLineNumbers 获取 map 中所有的行号（用于调试）
+func getLineNumbers(lineMap map[int]diffLineInfo) []int {
+	lines := make([]int, 0, len(lineMap))
+	for lineNum := range lineMap {
+		lines = append(lines, lineNum)
+	}
+	// 简单排序
+	for i := 0; i < len(lines); i++ {
+		for j := i + 1; j < len(lines); j++ {
+			if lines[i] > lines[j] {
+				lines[i], lines[j] = lines[j], lines[i]
+			}
+		}
+	}
+	return lines
 }
