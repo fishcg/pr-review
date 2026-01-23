@@ -517,15 +517,32 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		var lineParam int
 		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
 			// GitLab 需要实际的文件行号
-			// 优先使用 NewLine（表示新增或修改的行）
-			if issue.NewLine > 0 {
+			// 根据 issue 的 Side 或者有无 newLine/oldLine 来判断
+
+			// 优先使用 Side 字段判断
+			if issue.Side == "LEFT" && issue.OldLine > 0 {
+				// 明确标记为左侧（删除的行）
+				lineParam = -issue.OldLine
+				log.Printf("🔍 [%s#%d] GitLab inline (LEFT): file=%s, oldLine=%d",
+					repo, prNum, issue.File, issue.OldLine)
+			} else if issue.Side == "RIGHT" && issue.NewLine > 0 {
+				// 明确标记为右侧（新增的行）
 				lineParam = issue.NewLine
+				log.Printf("🔍 [%s#%d] GitLab inline (RIGHT): file=%s, newLine=%d",
+					repo, prNum, issue.File, issue.NewLine)
+			} else if issue.NewLine > 0 {
+				// 没有 Side 标记，优先使用 NewLine
+				lineParam = issue.NewLine
+				log.Printf("🔍 [%s#%d] GitLab inline: file=%s, newLine=%d, oldLine=%d",
+					repo, prNum, issue.File, issue.NewLine, issue.OldLine)
 			} else if issue.OldLine > 0 {
-				// 如果没有 NewLine，使用 OldLine（表示删除的行）
-				// 注意：这种情况 GitLab 可能需要特殊处理
-				lineParam = -issue.OldLine // 使用负数标记这是旧行
+				// 只有 OldLine，表示删除的行
+				lineParam = -issue.OldLine
+				log.Printf("🔍 [%s#%d] GitLab inline (deleted): file=%s, oldLine=%d",
+					repo, prNum, issue.File, issue.OldLine)
 			} else {
-				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s", repo, prNum, issue.File)
+				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s (old:%d, new:%d, side:%s)",
+					repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side)
 				unmatched = append(unmatched, issue)
 				continue
 			}
