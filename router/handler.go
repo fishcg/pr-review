@@ -610,16 +610,23 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 }
 
 func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineInfo, bool) {
-	if issue.Code != "" && isInvalidSnippet(issue.Code) {
-		log.Printf("🔍 resolveLineInfo: invalid snippet '%s'", issue.Code)
+	// 清理代码片段：去掉 AI 可能添加的 diff 前缀（+ 或 -）
+	cleanCode := issue.Code
+	if len(cleanCode) > 0 && (cleanCode[0] == '+' || cleanCode[0] == '-') {
+		cleanCode = strings.TrimSpace(cleanCode[1:])
+		log.Printf("🔍 resolveLineInfo: cleaned code from '%s' to '%s'", issue.Code, cleanCode)
+	}
+
+	if cleanCode != "" && isInvalidSnippet(cleanCode) {
+		log.Printf("🔍 resolveLineInfo: invalid snippet '%s'", cleanCode)
 		return diffLineInfo{}, false
 	}
 
 	if issue.Side == "RIGHT" && issue.NewLine > 0 {
 		if info, ok := fileLines.New[issue.NewLine]; ok {
-			match := lineMatches(issue.Code, info.Content)
+			match := lineMatches(cleanCode, info.Content)
 			log.Printf("🔍 resolveLineInfo: Side=RIGHT, NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.NewLine, ok, issue.Code, info.Content, match)
+				issue.NewLine, ok, cleanCode, info.Content, match)
 			if match {
 				return info, true
 			}
@@ -629,9 +636,9 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 	}
 	if issue.Side == "LEFT" && issue.OldLine > 0 {
 		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			match := lineMatches(issue.Code, info.Content)
+			match := lineMatches(cleanCode, info.Content)
 			log.Printf("🔍 resolveLineInfo: Side=LEFT, OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.OldLine, ok, issue.Code, info.Content, match)
+				issue.OldLine, ok, cleanCode, info.Content, match)
 			if match {
 				return info, true
 			}
@@ -642,9 +649,9 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 
 	if issue.NewLine > 0 {
 		if info, ok := fileLines.New[issue.NewLine]; ok {
-			match := lineMatches(issue.Code, info.Content)
+			match := lineMatches(cleanCode, info.Content)
 			log.Printf("🔍 resolveLineInfo: NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.NewLine, ok, issue.Code, info.Content, match)
+				issue.NewLine, ok, cleanCode, info.Content, match)
 			if match {
 				return info, true
 			}
@@ -654,9 +661,9 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 	}
 	if issue.OldLine > 0 {
 		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			match := lineMatches(issue.Code, info.Content)
+			match := lineMatches(cleanCode, info.Content)
 			log.Printf("🔍 resolveLineInfo: OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.OldLine, ok, issue.Code, info.Content, match)
+				issue.OldLine, ok, cleanCode, info.Content, match)
 			if match {
 				return info, true
 			}
@@ -665,11 +672,11 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 		}
 	}
 
-	if issue.Code != "" {
-		if info, ok := findBySnippet(fileLines.New, issue.Code); ok {
+	if cleanCode != "" {
+		if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
 			return info, true
 		}
-		if info, ok := findBySnippet(fileLines.Old, issue.Code); ok {
+		if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
 			return info, true
 		}
 		return diffLineInfo{}, false
