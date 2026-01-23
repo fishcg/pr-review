@@ -297,8 +297,8 @@
     <div class="container">
         <header>
             <div class="logo">🤖</div>
-            <h1>Github CI CR</h1>
-            <p class="subtitle">基于 AI 的智能代码审查服务</p>
+            <h1>AI Code Review</h1>
+            <p class="subtitle">基于 AI 的智能代码审查服务 | 支持 GitHub 和 GitLab</p>
             <div class="status">
                 <span class="status-dot"></span>
                 快速构建您的 AI 代码审查工作流
@@ -310,8 +310,8 @@
             <section id="intro">
                 <h2>项目介绍</h2>
                 <p style="font-size: 1.1rem; color: #555; line-height: 1.8;">
-                    <strong>pr-review</strong> 是一个开源的 AI 代码审查工具，能够自动分析 GitHub Pull Request 中的代码变更，
-                    发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
+                    <strong>pr-review</strong> 是一个开源的 AI 代码审查工具，支持 <strong>GitHub Pull Request</strong> 和 <strong>GitLab Merge Request</strong>，
+                    能够自动分析代码变更，发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
                 </p>
                 <p style="font-size: 1.1rem; color: #555; line-height: 1.8; margin-top: 15px;">
                     🎯 <strong>零成本构建你的 AI 代码审查 CI 流程</strong> - 支持私有部署，数据完全可控，
@@ -328,9 +328,14 @@
                 <h2>核心特性</h2>
                 <div class="features">
                     <div class="feature-card">
+                        <div class="feature-icon">🌐</div>
+                        <h3>双平台支持</h3>
+                        <p>同时支持 GitHub 和 GitLab，可根据需求灵活切换或混合使用</p>
+                    </div>
+                    <div class="feature-card">
                         <div class="feature-icon">🏠</div>
                         <h3>私有部署</h3>
-                        <p>支持 Docker、Kubernetes 等多种部署方式，数据完全可控，不依赖第三方服务</p>
+                        <p>支持 Docker、Kubernetes 等多种部署方式，数据完全可控，支持私有 GitLab 实例</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🔧</div>
@@ -340,7 +345,7 @@
                     <div class="feature-card">
                         <div class="feature-icon">⚡</div>
                         <h3>自动化触发</h3>
-                        <p>通过 GitHub Webhook 自动触发，PR 有新提交时立即进行审查</p>
+                        <p>通过 Webhook 自动触发，PR/MR 有新提交时立即进行审查</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">🔍</div>
@@ -353,7 +358,7 @@
                         <p>Go 编写，单二进制文件，资源占用极低（20MB 内存即可运行）</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🌐</div>
+                        <div class="feature-icon">📦</div>
                         <h3>开源免费</h3>
                         <p>MIT 协议，完全开源，可自由修改和商业使用</p>
                     </div>
@@ -379,7 +384,10 @@ cd pr-review</pre>
                     <p style="margin-top: 10px;">复制配置模板并修改：</p>
 <pre>cp config.yaml.example config.yaml
 # 编辑 config.yaml，填写：
-# - github_token: GitHub Personal Access Token
+# - vcs_provider: github 或 gitlab（默认 github）
+# - github_token: GitHub Personal Access Token（GitHub 时必填）
+# - gitlab_token: GitLab Personal Access Token（GitLab 时必填）
+# - gitlab_base_url: GitLab 实例地址（可选，默认 gitlab.com）
 # - ai_api_url: AI 服务地址（支持 OpenAI 兼容接口）
 # - ai_api_key: AI API Key</pre>
                 </div>
@@ -428,11 +436,27 @@ Events: Pull requests</pre>
                 <p style="margin-bottom: 20px;">config.yaml 主要配置项：</p>
 
                 <div class="api-endpoint">
+                    <h4>🔀 VCS Provider 配置</h4>
+<pre><code>vcs_provider: "github"     # 选择 github 或 gitlab（默认 github）</code></pre>
+                </div>
+
+                <div class="api-endpoint">
                     <h4>🔑 GitHub 配置</h4>
 <pre><code>github_token: "ghp_xxxxx"  # GitHub Personal Access Token
                               # 需要 repo 权限用于读取 PR 和发布评论
 
 webhook_secret: ""         # Webhook 签名密钥（可选，建议配置）</code></pre>
+                </div>
+
+                <div class="api-endpoint">
+                    <h4>🦊 GitLab 配置</h4>
+<pre><code>gitlab_token: "glpat-xxxxx"  # GitLab Personal Access Token
+                                # 需要 api、read_api、write_repository 权限
+
+gitlab_base_url: ""           # GitLab 实例地址（默认 gitlab.com）
+                                # 私有部署填写完整地址
+
+gitlab_webhook_token: ""      # Webhook Token（可选，建议配置）</code></pre>
                 </div>
 
                 <div class="api-endpoint">
@@ -470,8 +494,8 @@ user_prompt_template: |   # 审查请求模板
                         <span class="method post">POST</span>
                         <span class="endpoint-path">/webhook</span>
                     </h4>
-                    <p><strong>说明：</strong>接收 GitHub Webhook 事件</p>
-                    <p><strong>触发时机：</strong>PR 创建、更新、重新打开</p>
+                    <p><strong>说明：</strong>接收 GitHub/GitLab Webhook 事件</p>
+                    <p><strong>触发时机：</strong>PR/MR 创建、更新、重新打开</p>
                 </div>
 
                 <div class="api-endpoint">
@@ -479,12 +503,20 @@ user_prompt_template: |   # 审查请求模板
                         <span class="method post">POST</span>
                         <span class="endpoint-path">/review</span>
                     </h4>
-                    <p><strong>说明：</strong>手动触发 PR 审查</p>
-                    <p><strong>请求体：</strong></p>
+                    <p><strong>说明：</strong>手动触发 PR/MR 审查</p>
+                    <p><strong>GitHub 请求体：</strong></p>
 <pre><code>{
   "repo": "owner/repository",
-  "pr_number": 123
+  "pr_number": 123,
+  "provider": "github"
 }</code></pre>
+                    <p><strong>GitLab 请求体：</strong></p>
+<pre><code>{
+  "repo": "group/project",
+  "pr_number": 45,
+  "provider": "gitlab"
+}</code></pre>
+                    <p style="margin-top: 10px;"><em>注：provider 可选，未指定时使用配置文件中的 vcs_provider</em></p>
                 </div>
 
                 <div class="api-endpoint">
@@ -508,12 +540,12 @@ user_prompt_template: |   # 审查请求模板
                     <div class="feature-card">
                         <div class="feature-icon">🤖</div>
                         <h3>AI 集成</h3>
-                        <p>支持 OpenAI、通义千问、Claude 等 OpenAI 兼容接口</p>
+                        <p>支持 OpenAI、通义千问、Claude 等 OpenAI 兼容接口，灵活配置</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">☁️</div>
-                        <h3>部署</h3>
-                        <p>Docker、Kubernetes、二进制直接运行，多种方式可选</p>
+                        <div class="feature-icon">🔌</div>
+                        <h3>API 集成</h3>
+                        <p>GitHub API、GitLab API 深度集成，统一接口抽象设计</p>
                     </div>
                 </div>
             </section>
