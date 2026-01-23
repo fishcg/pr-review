@@ -149,38 +149,8 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 			return
 		}
 
-		// 调试：输出 diff 内容（截断避免过长）
-		diffPreview := diffText
-		if len(diffPreview) > 500 {
-			diffPreview = diffPreview[:500] + "\n...(truncated)"
-		}
-		log.Printf("🔍 [%s#%d] Diff content:\n%s", repo, prNum, diffPreview)
-
 		diffPositionMap := buildDiffPositionMap(diffText)
-
-		// 调试：输出解析后的行号映射（包含类型）
-		for file, lines := range diffPositionMap {
-			oldDetails := make([]string, 0)
-			for lineNum, info := range lines.Old {
-				oldDetails = append(oldDetails, fmt.Sprintf("%d(%s)", lineNum, info.Type))
-			}
-			newDetails := make([]string, 0)
-			for lineNum, info := range lines.New {
-				newDetails = append(newDetails, fmt.Sprintf("%d(%s)", lineNum, info.Type))
-			}
-			log.Printf("🔍 [%s#%d] File: %s", repo, prNum, file)
-			log.Printf("    Old lines: %v", oldDetails)
-			log.Printf("    New lines: %v", newDetails)
-		}
-
 		issues := parseIssuesFromReview(reviewContent)
-
-		// 调试：输出 AI 识别的问题行号和代码片段
-		for _, issue := range issues {
-			log.Printf("🔍 [%s#%d] Issue: file=%s, old=%d, new=%d, side=%s, code='%s'",
-				repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side, issue.Code)
-		}
-
 		unmatched := postInlineIssues(repo, prNum, headSHA, vcsClient, diffPositionMap, issues)
 
 		summary := buildSummaryComment(reviewContent)
@@ -400,12 +370,7 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 	var position int
 
 	lines := strings.Split(diffText, "\n")
-	for lineIdx, line := range lines {
-		// 调试：输出前20行的详细信息
-		if lineIdx < 20 {
-			log.Printf("🔍 Diff line %d: prefix='%s', content='%s'", lineIdx, getLinePrefix(line), line)
-		}
-
+	for _, line := range lines {
 		if strings.HasPrefix(line, "diff --git ") {
 			currentFile = ""
 			oldLine = 0
@@ -614,61 +579,31 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 	cleanCode := issue.Code
 	if len(cleanCode) > 0 && (cleanCode[0] == '+' || cleanCode[0] == '-') {
 		cleanCode = strings.TrimSpace(cleanCode[1:])
-		log.Printf("🔍 resolveLineInfo: cleaned code from '%s' to '%s'", issue.Code, cleanCode)
 	}
 
 	if cleanCode != "" && isInvalidSnippet(cleanCode) {
-		log.Printf("🔍 resolveLineInfo: invalid snippet '%s'", cleanCode)
 		return diffLineInfo{}, false
 	}
 
 	if issue.Side == "RIGHT" && issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok {
-			match := lineMatches(cleanCode, info.Content)
-			log.Printf("🔍 resolveLineInfo: Side=RIGHT, NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.NewLine, ok, cleanCode, info.Content, match)
-			if match {
-				return info, true
-			}
-		} else {
-			log.Printf("🔍 resolveLineInfo: Side=RIGHT, NewLine=%d not found in New map", issue.NewLine)
+		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(cleanCode, info.Content) {
+			return info, true
 		}
 	}
 	if issue.Side == "LEFT" && issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			match := lineMatches(cleanCode, info.Content)
-			log.Printf("🔍 resolveLineInfo: Side=LEFT, OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.OldLine, ok, cleanCode, info.Content, match)
-			if match {
-				return info, true
-			}
-		} else {
-			log.Printf("🔍 resolveLineInfo: Side=LEFT, OldLine=%d not found in Old map", issue.OldLine)
+		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(cleanCode, info.Content) {
+			return info, true
 		}
 	}
 
 	if issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok {
-			match := lineMatches(cleanCode, info.Content)
-			log.Printf("🔍 resolveLineInfo: NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.NewLine, ok, cleanCode, info.Content, match)
-			if match {
-				return info, true
-			}
-		} else {
-			log.Printf("🔍 resolveLineInfo: NewLine=%d not found in New map", issue.NewLine)
+		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(cleanCode, info.Content) {
+			return info, true
 		}
 	}
 	if issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			match := lineMatches(cleanCode, info.Content)
-			log.Printf("🔍 resolveLineInfo: OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
-				issue.OldLine, ok, cleanCode, info.Content, match)
-			if match {
-				return info, true
-			}
-		} else {
-			log.Printf("🔍 resolveLineInfo: OldLine=%d not found in Old map", issue.OldLine)
+		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(cleanCode, info.Content) {
+			return info, true
 		}
 	}
 
@@ -901,32 +836,4 @@ func escapeTable(value string) string {
 	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
 	trimmed = strings.ReplaceAll(trimmed, "|", "\\|")
 	return trimmed
-}
-
-// getLineNumbers 获取 map 中所有的行号（用于调试）
-func getLineNumbers(lineMap map[int]diffLineInfo) []int {
-	lines := make([]int, 0, len(lineMap))
-	for lineNum := range lineMap {
-		lines = append(lines, lineNum)
-	}
-	// 简单排序
-	for i := 0; i < len(lines); i++ {
-		for j := i + 1; j < len(lines); j++ {
-			if lines[i] > lines[j] {
-				lines[i], lines[j] = lines[j], lines[i]
-			}
-		}
-	}
-	return lines
-}
-
-// getLinePrefix 获取行的前缀字符（用于调试）
-func getLinePrefix(line string) string {
-	if len(line) == 0 {
-		return "(empty)"
-	}
-	if len(line) >= 3 {
-		return line[:3]
-	}
-	return line
 }
