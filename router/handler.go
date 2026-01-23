@@ -158,18 +158,27 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 		diffPositionMap := buildDiffPositionMap(diffText)
 
-		// 调试：输出解析后的行号映射
+		// 调试：输出解析后的行号映射（包含类型）
 		for file, lines := range diffPositionMap {
-			log.Printf("🔍 [%s#%d] File: %s, Old lines: %v, New lines: %v",
-				repo, prNum, file, getLineNumbers(lines.Old), getLineNumbers(lines.New))
+			oldDetails := make([]string, 0)
+			for lineNum, info := range lines.Old {
+				oldDetails = append(oldDetails, fmt.Sprintf("%d(%s)", lineNum, info.Type))
+			}
+			newDetails := make([]string, 0)
+			for lineNum, info := range lines.New {
+				newDetails = append(newDetails, fmt.Sprintf("%d(%s)", lineNum, info.Type))
+			}
+			log.Printf("🔍 [%s#%d] File: %s", repo, prNum, file)
+			log.Printf("    Old lines: %v", oldDetails)
+			log.Printf("    New lines: %v", newDetails)
 		}
 
 		issues := parseIssuesFromReview(reviewContent)
 
-		// 调试：输出 AI 识别的问题行号
+		// 调试：输出 AI 识别的问题行号和代码片段
 		for _, issue := range issues {
-			log.Printf("🔍 [%s#%d] Issue: file=%s, old=%d, new=%d, side=%s",
-				repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side)
+			log.Printf("🔍 [%s#%d] Issue: file=%s, old=%d, new=%d, side=%s, code='%s'",
+				repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side, issue.Code)
 		}
 
 		unmatched := postInlineIssues(repo, prNum, headSHA, vcsClient, diffPositionMap, issues)
@@ -602,28 +611,57 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 
 func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineInfo, bool) {
 	if issue.Code != "" && isInvalidSnippet(issue.Code) {
+		log.Printf("🔍 resolveLineInfo: invalid snippet '%s'", issue.Code)
 		return diffLineInfo{}, false
 	}
 
 	if issue.Side == "RIGHT" && issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(issue.Code, info.Content) {
-			return info, true
+		if info, ok := fileLines.New[issue.NewLine]; ok {
+			match := lineMatches(issue.Code, info.Content)
+			log.Printf("🔍 resolveLineInfo: Side=RIGHT, NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
+				issue.NewLine, ok, issue.Code, info.Content, match)
+			if match {
+				return info, true
+			}
+		} else {
+			log.Printf("🔍 resolveLineInfo: Side=RIGHT, NewLine=%d not found in New map", issue.NewLine)
 		}
 	}
 	if issue.Side == "LEFT" && issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(issue.Code, info.Content) {
-			return info, true
+		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			match := lineMatches(issue.Code, info.Content)
+			log.Printf("🔍 resolveLineInfo: Side=LEFT, OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
+				issue.OldLine, ok, issue.Code, info.Content, match)
+			if match {
+				return info, true
+			}
+		} else {
+			log.Printf("🔍 resolveLineInfo: Side=LEFT, OldLine=%d not found in Old map", issue.OldLine)
 		}
 	}
 
 	if issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(issue.Code, info.Content) {
-			return info, true
+		if info, ok := fileLines.New[issue.NewLine]; ok {
+			match := lineMatches(issue.Code, info.Content)
+			log.Printf("🔍 resolveLineInfo: NewLine=%d, exists=%v, code='%s', content='%s', match=%v",
+				issue.NewLine, ok, issue.Code, info.Content, match)
+			if match {
+				return info, true
+			}
+		} else {
+			log.Printf("🔍 resolveLineInfo: NewLine=%d not found in New map", issue.NewLine)
 		}
 	}
 	if issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(issue.Code, info.Content) {
-			return info, true
+		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			match := lineMatches(issue.Code, info.Content)
+			log.Printf("🔍 resolveLineInfo: OldLine=%d, exists=%v, code='%s', content='%s', match=%v",
+				issue.OldLine, ok, issue.Code, info.Content, match)
+			if match {
+				return info, true
+			}
+		} else {
+			log.Printf("🔍 resolveLineInfo: OldLine=%d not found in Old map", issue.OldLine)
 		}
 	}
 
