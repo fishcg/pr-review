@@ -48,12 +48,14 @@ gitlab_webhook_token: ""
 # ===== Review Settings =====
 # Inline issue comments mode (default: false)
 # 开启后，问题会拆分成行内评论，PR 大评论只保留评分/修改点/总结
-inline_issue_comment: false
+inline_issue_comment: true
 
 # Comment only on changed lines (default: false)
-# 开启后，只对修改的代码行（+/-）发布行内评论，不对未修改的上下文行评论
-# 注意：GitLab 因为 API 限制，无论此配置如何都不会对上下文行评论
-comment_only_changes: false
+# 开启后，只对修改的代码行（+/-）发布评论，未修改的上下文行的问题会被完全忽略
+# - true: 上下文行的问题不会出现在行内评论，也不会出现在 PR/MR 主评论中
+# - false (GitHub): 可以对上下文行发布行内评论
+# - false (GitLab): 上下文行无法发布行内评论（API 限制），但会在 PR 主评论中列出
+comment_only_changes: true
 
 # AI Review Prompts
 # System prompt - defines the AI's role and behavior

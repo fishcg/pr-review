@@ -517,21 +517,21 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		}
 
 		// 根据配置决定是否跳过上下文行（未修改的行）
-		// GitLab 始终不允许在上下文行上发布评论
-		// 如果开启了 comment_only_changes，GitHub 也跳过上下文行
 		commentOnlyChanges := appConfig.GetCommentOnlyChanges()
 		if lineInfo.Type == " " {
-			if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
+			if commentOnlyChanges {
+				// 用户配置了只评论修改的行，完全忽略上下文行的问题
+				// 不添加到 unmatched，也不会出现在大评论中
+				log.Printf("⚠️ [%s#%d] Ignoring context line issue (comment_only_changes enabled): %s line %d", repo, prNum, issue.File, issue.NewLine)
+				continue
+			} else if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
 				// GitLab API 不支持在上下文行上评论
+				// 但用户没有开启 comment_only_changes，所以添加到大评论的未定位问题表格中
 				log.Printf("⚠️ [%s#%d] Skipping context line (GitLab limitation): %s line %d", repo, prNum, issue.File, issue.NewLine)
 				unmatched = append(unmatched, issue)
 				continue
-			} else if commentOnlyChanges {
-				// GitHub 可以评论上下文行，但用户配置了只评论修改的行
-				log.Printf("⚠️ [%s#%d] Skipping context line (comment_only_changes enabled): %s line %d", repo, prNum, issue.File, issue.NewLine)
-				unmatched = append(unmatched, issue)
-				continue
 			}
+			// GitHub 且 comment_only_changes=false，可以正常评论上下文行
 		}
 
 		body := buildInlineBody(issue)

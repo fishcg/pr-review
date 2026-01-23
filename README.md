@@ -124,7 +124,10 @@ ok
 - `ai_api_key`: API 认证密钥
 - `ai_model`: 使用的模型名称（如 `qwen-plus-latest`）
 - `inline_issue_comment`: 开启后，问题拆分为行内评论，PR/MR 大评论仅保留评分/修改点/总结
-- `comment_only_changes`: 开启后，只对修改的代码行（+/-）发布行内评论，不对未修改的上下文行评论（GitLab 因 API 限制始终不对上下文行评论）
+- `comment_only_changes`: 开启后，只对修改的代码行（+/-）发布评论，未修改的上下文行的问题会被完全忽略
+  - `true`: 上下文行的问题不会出现在任何评论中
+  - `false` (GitHub): 可以对上下文行发布行内评论
+  - `false` (GitLab): 上下文行无法发布行内评论（API 限制），但会在主评论中列出
 
 ### Prompt 配置
 
