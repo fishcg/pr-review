@@ -169,7 +169,8 @@ func (c *GitLabClient) PostComment(repo string, mrNum int, comment string) error
 }
 
 // PostInlineComment 向 MR 发布行内评论
-func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path string, position int, body string) error {
+// 注意：对于 GitLab，position 参数应该是实际的文件行号（不是 diff position）
+func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path string, lineNumber int, body string) error {
 	encodedRepo := url.PathEscape(repo)
 
 	// GitLab 使用 discussions API 来发布行内评论
@@ -181,19 +182,31 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 
 	discussionURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/discussions", c.BaseURL, encodedRepo, mrNum)
 
-	// GitLab 的 position 对象比 GitHub 复杂，需要包含 base_sha, head_sha, start_sha 等
-	// position 参数在 GitLab 中对应的是 new_line（新文件的行号）
+	// 构建 position 对象
+	// lineNumber > 0: 新行（new_line）
+	// lineNumber < 0: 旧行（old_line），使用绝对值
+	positionObj := map[string]interface{}{
+		"base_sha":      mrInfo.DiffRefs.BaseSHA,
+		"head_sha":      mrInfo.DiffRefs.HeadSHA,
+		"start_sha":     mrInfo.DiffRefs.StartSHA,
+		"position_type": "text",
+		"new_path":      path,
+		"old_path":      path,
+	}
+
+	if lineNumber > 0 {
+		// 新增或修改的行
+		positionObj["new_line"] = lineNumber
+	} else if lineNumber < 0 {
+		// 删除的行
+		positionObj["old_line"] = -lineNumber
+	} else {
+		return fmt.Errorf("invalid line number: %d", lineNumber)
+	}
+
 	discussionBody := map[string]interface{}{
-		"body": body,
-		"position": map[string]interface{}{
-			"base_sha":      mrInfo.DiffRefs.BaseSHA,
-			"head_sha":      mrInfo.DiffRefs.HeadSHA,
-			"start_sha":     mrInfo.DiffRefs.StartSHA,
-			"position_type": "text",
-			"new_path":      path,
-			"old_path":      path,
-			"new_line":      position, // 注意：这里使用 position 作为行号的近似
-		},
+		"body":     body,
+		"position": positionObj,
 	}
 
 	jsonDiscussion, err := json.Marshal(discussionBody)

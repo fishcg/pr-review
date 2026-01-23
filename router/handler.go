@@ -511,7 +511,30 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		}
 
 		body := buildInlineBody(issue)
-		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineInfo.Position, body); err != nil {
+
+		// 根据 provider 类型选择合适的参数
+		// GitHub 使用 diff position，GitLab 使用实际行号
+		var lineParam int
+		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
+			// GitLab 需要实际的文件行号
+			// 优先使用 NewLine（表示新增或修改的行）
+			if issue.NewLine > 0 {
+				lineParam = issue.NewLine
+			} else if issue.OldLine > 0 {
+				// 如果没有 NewLine，使用 OldLine（表示删除的行）
+				// 注意：这种情况 GitLab 可能需要特殊处理
+				lineParam = -issue.OldLine // 使用负数标记这是旧行
+			} else {
+				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s", repo, prNum, issue.File)
+				unmatched = append(unmatched, issue)
+				continue
+			}
+		} else {
+			// GitHub 使用 diff position
+			lineParam = lineInfo.Position
+		}
+
+		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineParam, body); err != nil {
 			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 			unmatched = append(unmatched, issue)
 		}
