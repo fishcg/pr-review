@@ -21,8 +21,8 @@ type GitLabClient struct {
 
 // MRInfo MR 基本信息
 type MRInfo struct {
-	SHA        string `json:"sha"`
-	DiffRefs   struct {
+	SHA      string `json:"sha"`
+	DiffRefs struct {
 		BaseSHA  string `json:"base_sha"`
 		HeadSHA  string `json:"head_sha"`
 		StartSHA string `json:"start_sha"`
@@ -84,7 +84,7 @@ func (c *GitLabClient) GetDiff(repo string, mrNum int) (string, error) {
 	diffText := c.buildUnifiedDiff(mrChanges.Changes)
 
 	// 截断保护，避免过长的 diff
-	const maxDiffLength = 6000
+	const maxDiffLength = 12000
 	if len(diffText) > maxDiffLength {
 		diffText = diffText[:maxDiffLength] + "\n...(truncated)"
 	}

@@ -61,7 +61,7 @@ func (c *GitHubClient) GetPRDiff(repo string, prNum int) (string, error) {
 	diffText := string(diffBytes)
 
 	// 截断保护，避免过长的 diff
-	const maxDiffLength = 6000
+	const maxDiffLength = 12000
 	if len(diffText) > maxDiffLength {
 		diffText = diffText[:maxDiffLength] + "\n...(truncated)"
 	}

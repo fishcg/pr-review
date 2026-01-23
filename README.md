@@ -289,7 +289,7 @@ ai-review:
 2. **Token 权限要求**:
    - GitHub Token 需要 `repo` 或 `public_repo` 权限
    - GitLab Token 需要 `api`, `read_api`, `write_repository` 权限
-3. **代码长度限制**: 默认截断超过 6000 字符的 diff，避免 AI 处理超时
+3. **代码长度限制**: 默认截断超过 12000 字符的 diff，避免 AI 处理超时
 4. **异步处理**: PR/MR 审查是异步进行的，不会阻塞 HTTP 请求
 5. **私有 GitLab 实例**: 支持自定义 `gitlab_base_url` 连接私有部署的 GitLab
 
