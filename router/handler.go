@@ -644,15 +644,120 @@ func findBySnippet(lines map[int]diffLineInfo, snippet string) (diffLineInfo, bo
 }
 
 func buildInlineBody(issue reviewIssue) string {
-	parts := []string{
-		fmt.Sprintf("**严重程度**: %s", issue.Severity),
-		fmt.Sprintf("**类别**: %s", issue.Category),
-		fmt.Sprintf("**问题**: %s", issue.Problem),
-	}
+	var builder strings.Builder
+
+	// 严重程度
+	builder.WriteString(fmt.Sprintf("**严重程度**: %s\n\n", issue.Severity))
+
+	// 类别
+	builder.WriteString(fmt.Sprintf("**类别**: %s\n\n", issue.Category))
+
+	// 问题描述
+	builder.WriteString(fmt.Sprintf("**问题**: %s\n", issue.Problem))
+
+	// 建议修复（如果有）
 	if issue.Suggestion != "" {
-		parts = append(parts, fmt.Sprintf("**建议**: %s", issue.Suggestion))
+		builder.WriteString("\n**建议**: ")
+
+		// 检查建议中是否包含代码片段（简单判断：包含代码相关关键词）
+		suggestion := issue.Suggestion
+		if containsCodeSuggestion(suggestion) {
+			// 尝试提取并格式化代码建议
+			formatted := formatCodeSuggestion(suggestion)
+			builder.WriteString(formatted)
+		} else {
+			builder.WriteString(suggestion)
+		}
 	}
-	return strings.Join(parts, "\n")
+
+	return builder.String()
+}
+
+// containsCodeSuggestion 检查建议中是否包含代码修复
+func containsCodeSuggestion(text string) bool {
+	// 如果建议中包含这些关键词，可能包含代码建议
+	keywords := []string{"改为", "修改为", "替换为", "应该是", "建议使用"}
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// formatCodeSuggestion 格式化代码建议，如果可能的话提取为 diff 格式
+func formatCodeSuggestion(text string) string {
+	// 简单处理：如果文本中包含代码片段，尝试格式化为 diff
+	// 例如："将 app.listen(8981) 改为 app.listen(8982)"
+
+	// 如果已经包含代码块标记，直接返回
+	if strings.Contains(text, "```") {
+		return text
+	}
+
+	// 尝试识别 "将 X 改为 Y" 或 "X 改为 Y" 的模式
+	patterns := []string{
+		"将 ", " 改为 ", "替换为 ", "修改为 ", "应该是 ", "建议使用 ",
+	}
+
+	hasPattern := false
+	for _, p := range patterns {
+		if strings.Contains(text, p) {
+			hasPattern = true
+			break
+		}
+	}
+
+	if !hasPattern {
+		return text
+	}
+
+	// 尝试提取修改建议并格式化为 diff
+	var builder strings.Builder
+	builder.WriteString(text)
+	builder.WriteString("\n\n")
+
+	// 如果文本中有清晰的代码片段（用反引号包裹），提取并显示为 diff
+	if extractDiffSuggestion(text, &builder) {
+		return builder.String()
+	}
+
+	return text
+}
+
+// extractDiffSuggestion 尝试从建议中提取代码并格式化为 diff
+func extractDiffSuggestion(text string, builder *strings.Builder) bool {
+	// 查找反引号包裹的代码片段
+	parts := strings.Split(text, "`")
+	if len(parts) < 3 {
+		return false
+	}
+
+	var oldCode, newCode string
+	codeCount := 0
+
+	for i := 1; i < len(parts); i += 2 {
+		code := strings.TrimSpace(parts[i])
+		if code != "" {
+			if codeCount == 0 {
+				oldCode = code
+			} else if codeCount == 1 {
+				newCode = code
+			}
+			codeCount++
+		}
+	}
+
+	// 如果找到了两段代码（旧代码和新代码），格式化为 diff
+	if oldCode != "" && newCode != "" && oldCode != newCode {
+		builder.WriteString("```diff\n")
+		builder.WriteString(fmt.Sprintf("- %s\n", oldCode))
+		builder.WriteString(fmt.Sprintf("+ %s\n", newCode))
+		builder.WriteString("```\n")
+		return true
+	}
+
+	return false
 }
 
 func buildUnmatchedIssuesTable(issues []reviewIssue) string {
