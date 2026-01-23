@@ -197,12 +197,10 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	if lineNumber > 0 {
 		// 新增或修改的行
 		positionObj["new_line"] = lineNumber
-		log.Printf("🔍 [GitLab MR#%d] Inline comment: new_line=%d, file=%s", mrNum, lineNumber, path)
 	} else if lineNumber < 0 {
 		// 删除的行
 		absLineNumber := -lineNumber
 		positionObj["old_line"] = absLineNumber
-		log.Printf("🔍 [GitLab MR#%d] Inline comment: old_line=%d, file=%s", mrNum, absLineNumber, path)
 	} else {
 		return fmt.Errorf("invalid line number: %d", lineNumber)
 	}
@@ -216,14 +214,6 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	if err != nil {
 		return fmt.Errorf("failed to marshal discussion: %w", err)
 	}
-
-	// 调试：打印请求体（截断 body 避免过长）
-	bodyPreview := body
-	if len(bodyPreview) > 100 {
-		bodyPreview = bodyPreview[:100] + "..."
-	}
-	log.Printf("🔍 [GitLab MR#%d] Request: base_sha=%s, head_sha=%s, start_sha=%s, body_preview=%s",
-		mrNum, mrInfo.DiffRefs.BaseSHA[:7], mrInfo.DiffRefs.HeadSHA[:7], mrInfo.DiffRefs.StartSHA[:7], bodyPreview)
 
 	req, err := http.NewRequest("POST", discussionURL, bytes.NewBuffer(jsonDiscussion))
 	if err != nil {

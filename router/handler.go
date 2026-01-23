@@ -535,26 +535,17 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 			if issue.Side == "LEFT" && issue.OldLine > 0 {
 				// 明确标记为左侧（删除的行）
 				lineParam = -issue.OldLine
-				log.Printf("🔍 [%s#%d] GitLab inline (LEFT): file=%s, oldLine=%d",
-					repo, prNum, issue.File, issue.OldLine)
 			} else if issue.Side == "RIGHT" && issue.NewLine > 0 {
 				// 明确标记为右侧（新增的行）
 				lineParam = issue.NewLine
-				log.Printf("🔍 [%s#%d] GitLab inline (RIGHT): file=%s, newLine=%d",
-					repo, prNum, issue.File, issue.NewLine)
 			} else if issue.NewLine > 0 {
 				// 没有 Side 标记，优先使用 NewLine
 				lineParam = issue.NewLine
-				log.Printf("🔍 [%s#%d] GitLab inline: file=%s, newLine=%d, oldLine=%d",
-					repo, prNum, issue.File, issue.NewLine, issue.OldLine)
 			} else if issue.OldLine > 0 {
 				// 只有 OldLine，表示删除的行
 				lineParam = -issue.OldLine
-				log.Printf("🔍 [%s#%d] GitLab inline (deleted): file=%s, oldLine=%d",
-					repo, prNum, issue.File, issue.OldLine)
 			} else {
-				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s (old:%d, new:%d, side:%s)",
-					repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side)
+				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s", repo, prNum, issue.File)
 				unmatched = append(unmatched, issue)
 				continue
 			}
