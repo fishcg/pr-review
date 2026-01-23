@@ -391,7 +391,12 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 	var position int
 
 	lines := strings.Split(diffText, "\n")
-	for _, line := range lines {
+	for lineIdx, line := range lines {
+		// 调试：输出前20行的详细信息
+		if lineIdx < 20 {
+			log.Printf("🔍 Diff line %d: prefix='%s', content='%s'", lineIdx, getLinePrefix(line), line)
+		}
+
 		if strings.HasPrefix(line, "diff --git ") {
 			currentFile = ""
 			oldLine = 0
@@ -868,4 +873,15 @@ func getLineNumbers(lineMap map[int]diffLineInfo) []int {
 		}
 	}
 	return lines
+}
+
+// getLinePrefix 获取行的前缀字符（用于调试）
+func getLinePrefix(line string) string {
+	if len(line) == 0 {
+		return "(empty)"
+	}
+	if len(line) >= 3 {
+		return line[:3]
+	}
+	return line
 }
