@@ -13,10 +13,13 @@ type Config struct {
 	AIApiKey           string `yaml:"ai_api_key"`
 	AIModel            string `yaml:"ai_model"`
 	Port               string `yaml:"port"`
-	SystemPrompt         string `yaml:"system_prompt"`
-	UserPromptTemplate   string `yaml:"user_prompt_template"`
-	InlineIssueComment   bool   `yaml:"inline_issue_comment"`
-	CommentOnlyChanges   bool   `yaml:"comment_only_changes"` // 只对修改的代码行评论，不对上下文行评论
+	SystemPrompt       string `yaml:"system_prompt"`
+	UserPromptTemplate string `yaml:"user_prompt_template"`
+	InlineIssueComment bool   `yaml:"inline_issue_comment"`
+	CommentOnlyChanges bool   `yaml:"comment_only_changes"` // 只对修改的代码行评论，不对上下文行评论
+
+	// 行号匹配策略配置
+	LineMatchStrategy string `yaml:"line_match_strategy"` // "snippet_first"(默认) 或 "line_number_first"
 
 	// VCS Provider 配置
 	VCSProvider string `yaml:"vcs_provider"` // "github" 或 "gitlab"
@@ -87,6 +90,11 @@ func LoadConfig(filename string) error {
 		return fmt.Errorf("vcs_provider must be either 'github' or 'gitlab', got: %s", AppConfig.VCSProvider)
 	}
 
+	// 行号匹配策略默认值
+	if AppConfig.LineMatchStrategy == "" {
+		AppConfig.LineMatchStrategy = "snippet_first" // 默认：优先使用代码片段匹配
+	}
+
 	return nil
 }
 
@@ -133,4 +141,9 @@ func (c *Config) GetGitlabBaseURL() string {
 // GetGitlabWebhookToken 获取 GitLab Webhook Token
 func (c *Config) GetGitlabWebhookToken() string {
 	return c.GitlabWebhookToken
+}
+
+// GetLineMatchStrategy 获取行号匹配策略
+func (c *Config) GetLineMatchStrategy() string {
+	return c.LineMatchStrategy
 }
