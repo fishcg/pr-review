@@ -12,7 +12,9 @@ type VCSProvider interface {
 	PostComment(repo string, number int, comment string) error
 
 	// PostInlineComment 发布行内评论到 PR/MR
-	PostInlineComment(repo string, number int, commitSHA, path string, position int, body string) error
+	// position: GitHub 使用 diff position, GitLab 使用实际行号
+	// oldLine, newLine: GitLab 需要这两个参数来标识修改的行
+	PostInlineComment(repo string, number int, commitSHA, path string, position int, body string, oldLine, newLine int) error
 
 	// GetProviderType 返回提供商类型（用于日志）
 	GetProviderType() string

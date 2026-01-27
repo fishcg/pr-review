@@ -84,7 +84,7 @@ func (c *GitLabClient) GetDiff(repo string, mrNum int) (string, error) {
 	diffText := c.buildUnifiedDiff(mrChanges.Changes)
 
 	// 截断保护，避免过长的 diff
-	const maxDiffLength = 12000
+	const maxDiffLength = 24000
 	if len(diffText) > maxDiffLength {
 		diffText = diffText[:maxDiffLength] + "\n...(truncated)"
 	}
@@ -169,8 +169,9 @@ func (c *GitLabClient) PostComment(repo string, mrNum int, comment string) error
 }
 
 // PostInlineComment 向 MR 发布行内评论
-// 注意：对于 GitLab，position 参数应该是实际的文件行号（不是 diff position）
-func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path string, lineNumber int, body string) error {
+// position: 对于 GitLab 忽略该参数
+// oldLine, newLine: 用于标识评论的具体行位置
+func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path string, position int, body string, oldLine, newLine int) error {
 	encodedRepo := url.PathEscape(repo)
 
 	// GitLab 使用 discussions API 来发布行内评论
@@ -183,8 +184,6 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	discussionURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/discussions", c.BaseURL, encodedRepo, mrNum)
 
 	// 构建 position 对象
-	// lineNumber > 0: 新行（new_line）
-	// lineNumber < 0: 旧行（old_line），使用绝对值
 	positionObj := map[string]interface{}{
 		"base_sha":      mrInfo.DiffRefs.BaseSHA,
 		"head_sha":      mrInfo.DiffRefs.HeadSHA,
@@ -194,16 +193,29 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 		"old_path":      path,
 	}
 
-	if lineNumber > 0 {
-		// 新增或修改的行
-		positionObj["new_line"] = lineNumber
-	} else if lineNumber < 0 {
-		// 删除的行
-		absLineNumber := -lineNumber
-		positionObj["old_line"] = absLineNumber
+	// 根据 oldLine 和 newLine 设置行位置
+	// GitLab API 的限制：每次只能指定 old_line 或 new_line 中的一个
+	// 对于修改的行（同时有 old_line 和 new_line），优先使用 new_line
+	var lineCode string
+	if newLine > 0 {
+		// 新增的行或修改的行：只设置 new_line
+		positionObj["new_line"] = newLine
+		lineCode = fmt.Sprintf("%s_%d_%d", mrInfo.DiffRefs.BaseSHA, 0, newLine)
+		if oldLine > 0 {
+			log.Printf("📝 GitLab inline comment: new_line=%d (modified line, oldLine=%d ignored)", newLine, oldLine)
+		} else {
+			log.Printf("📝 GitLab inline comment: new_line=%d (added line)", newLine)
+		}
+	} else if oldLine > 0 {
+		// 删除的行：只设置 old_line
+		positionObj["old_line"] = oldLine
+		lineCode = fmt.Sprintf("%s_%d_%d", mrInfo.DiffRefs.BaseSHA, oldLine, 0)
+		log.Printf("📝 GitLab inline comment: old_line=%d (deleted line)", oldLine)
 	} else {
-		return fmt.Errorf("invalid line number: %d", lineNumber)
+		return fmt.Errorf("invalid line numbers: oldLine=%d, newLine=%d", oldLine, newLine)
 	}
+
+	log.Printf("📝 Generated line_code: %s", lineCode)
 
 	discussionBody := map[string]interface{}{
 		"body":     body,
@@ -214,6 +226,8 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	if err != nil {
 		return fmt.Errorf("failed to marshal discussion: %w", err)
 	}
+
+	log.Printf("📤 GitLab discussion payload: %s", string(jsonDiscussion))
 
 	req, err := http.NewRequest("POST", discussionURL, bytes.NewBuffer(jsonDiscussion))
 	if err != nil {
@@ -231,10 +245,11 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 
 	if resp.StatusCode != 201 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("GitLab API response: %s", string(bodyBytes))
+		log.Printf("❌ GitLab API response (status %d): %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("failed to post inline comment, status: %s", resp.Status)
 	}
 
+	log.Printf("✅ GitLab inline comment posted successfully")
 	return nil
 }
 

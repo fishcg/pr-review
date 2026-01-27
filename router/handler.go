@@ -26,6 +26,7 @@ type Config interface {
 	GetAIConfig() (apiURL, apiKey, model, systemPrompt, userTemplate string)
 	GetInlineIssueComment() bool
 	GetCommentOnlyChanges() bool
+	GetLineMatchStrategy() string
 }
 
 var appConfig Config
@@ -428,6 +429,18 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 			continue
 		}
 
+		// 跳过空行（通常是 split 的副作用）
+		if line == "" {
+			continue
+		}
+
+		// 只处理有效的 diff 行
+		if !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, " ") {
+			// 跳过非标准行（例如：某些 diff 工具的注释）
+			log.Printf("⚠️ Skipping non-standard diff line in %s: %q", currentFile, line)
+			continue
+		}
+
 		position++
 		if strings.HasPrefix(line, "+") {
 			lineMap[currentFile].New[newLine] = diffLineInfo{
@@ -500,6 +513,19 @@ func parseOldHunkStart(hunkLine string) int {
 }
 
 func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSProvider, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
+	// 调试: 输出 position map 的统计信息
+	log.Printf("📊 [%s#%d] Diff position map statistics:", repo, prNum)
+	for file, lines := range positionMap {
+		log.Printf("  File: %s - Old lines: %d, New lines: %d", file, len(lines.Old), len(lines.New))
+		// 输出前10个新行的映射，用于调试
+		log.Printf("  New line mappings (first 10):")
+		for i := 1; i <= 10 && i <= len(lines.New); i++ {
+			if info, ok := lines.New[i]; ok {
+				log.Printf("    NewLine[%d] -> Position=%d, Type=%q, Content=%q", i, info.Position, info.Type, truncateString(info.Content, 50))
+			}
+		}
+	}
+
 	unmatched := make([]reviewIssue, 0)
 	for _, issue := range issues {
 		fileLines, ok := positionMap[issue.File]
@@ -508,6 +534,9 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 			unmatched = append(unmatched, issue)
 			continue
 		}
+
+		log.Printf("🔍 [%s#%d] Attempting to match issue: File=%s, OldLine=%d, NewLine=%d, Side=%s, Code=%q",
+			repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side, issue.Code)
 
 		lineInfo, ok := resolveLineInfo(fileLines, issue)
 		if !ok {
@@ -536,37 +565,37 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 
 		body := buildInlineBody(issue)
 
+		// 从 lineInfo 中提取实际的行号（通过 position 反查）
+		var actualOldLine, actualNewLine int
+		if lineInfo.Type == "+" {
+			// 新增行：只有 new_line
+			actualNewLine = findLineNumberByPosition(fileLines.New, lineInfo.Position)
+			actualOldLine = 0
+			log.Printf("📍 Resolved to: NewLine=%d (added line)", actualNewLine)
+		} else if lineInfo.Type == "-" {
+			// 删除行：只有 old_line
+			actualOldLine = findLineNumberByPosition(fileLines.Old, lineInfo.Position)
+			actualNewLine = 0
+			log.Printf("📍 Resolved to: OldLine=%d (deleted line)", actualOldLine)
+		} else {
+			// 上下文行或修改行：同时有 old_line 和 new_line
+			actualOldLine = findLineNumberByPosition(fileLines.Old, lineInfo.Position)
+			actualNewLine = findLineNumberByPosition(fileLines.New, lineInfo.Position)
+			log.Printf("📍 Resolved to: OldLine=%d, NewLine=%d (context/modified line)", actualOldLine, actualNewLine)
+		}
+
 		// 根据 provider 类型选择合适的参数
-		// GitHub 使用 diff position，GitLab 使用实际行号
 		var lineParam int
 		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
-			// GitLab 需要实际的文件行号
-			// 根据 issue 的 Side 或者有无 newLine/oldLine 来判断
-
-			// 优先使用 Side 字段判断
-			if issue.Side == "LEFT" && issue.OldLine > 0 {
-				// 明确标记为左侧（删除的行）
-				lineParam = -issue.OldLine
-			} else if issue.Side == "RIGHT" && issue.NewLine > 0 {
-				// 明确标记为右侧（新增的行）
-				lineParam = issue.NewLine
-			} else if issue.NewLine > 0 {
-				// 没有 Side 标记，优先使用 NewLine
-				lineParam = issue.NewLine
-			} else if issue.OldLine > 0 {
-				// 只有 OldLine，表示删除的行
-				lineParam = -issue.OldLine
-			} else {
-				log.Printf("⚠️ [%s#%d] No valid line number for GitLab inline comment: %s", repo, prNum, issue.File)
-				unmatched = append(unmatched, issue)
-				continue
-			}
+			// GitLab 会使用 actualOldLine 和 actualNewLine 参数，lineParam 被忽略
+			lineParam = 0
 		} else {
 			// GitHub 使用 diff position
 			lineParam = lineInfo.Position
 		}
 
-		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineParam, body); err != nil {
+		// 调用 PostInlineComment，传递实际的行号信息
+		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineParam, body, actualOldLine, actualNewLine); err != nil {
 			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 			unmatched = append(unmatched, issue)
 		}
@@ -582,53 +611,85 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 	}
 
 	if cleanCode != "" && isInvalidSnippet(cleanCode) {
+		log.Printf("⚠️ Invalid snippet: %q", cleanCode)
 		return diffLineInfo{}, false
 	}
 
-	if issue.Side == "RIGHT" && issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(cleanCode, info.Content) {
-			return info, true
-		}
-	}
-	if issue.Side == "LEFT" && issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(cleanCode, info.Content) {
-			return info, true
-		}
-	}
-
-	if issue.NewLine > 0 {
-		if info, ok := fileLines.New[issue.NewLine]; ok && lineMatches(cleanCode, info.Content) {
-			return info, true
-		}
-	}
-	if issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok && lineMatches(cleanCode, info.Content) {
-			return info, true
-		}
-	}
-
+	// 策略 1: 优先使用代码片段精确匹配（最可靠，只要 AI 提供了代码）
 	if cleanCode != "" {
+		// 先在新行中搜索
 		if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
+			actualLine := findLineNumberByPosition(fileLines.New, info.Position)
+			if actualLine != issue.NewLine && issue.NewLine > 0 {
+				log.Printf("⚠️ 行号修正: AI报告NewLine=%d, 实际NewLine=%d (代码片段定位)", issue.NewLine, actualLine)
+			} else {
+				log.Printf("✅ Matched by snippet in New lines, NewLine=%d, Position=%d", actualLine, info.Position)
+			}
 			return info, true
 		}
+		// 再在旧行中搜索
 		if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
+			actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
+			if actualLine != issue.OldLine && issue.OldLine > 0 {
+				log.Printf("⚠️ 行号修正: AI报告OldLine=%d, 实际OldLine=%d (代码片段定位)", issue.OldLine, actualLine)
+			} else {
+				log.Printf("✅ Matched by snippet in Old lines, OldLine=%d, Position=%d", actualLine, info.Position)
+			}
 			return info, true
 		}
+		log.Printf("❌ Code snippet not found: %q", cleanCode)
+		// 注意：代码片段未找到时，不fallback到行号匹配，直接返回失败
+		// 因为AI提供了代码但找不到，说明可能是错误的问题
 		return diffLineInfo{}, false
 	}
 
+	// 策略 2: 如果没有代码片段，尝试使用行号（但要谨慎）
+	log.Printf("⚠️ No code snippet provided, trying line number matching (less reliable)")
+
+	// 优先尝试 Side 字段匹配
+	if issue.Side == "RIGHT" && issue.NewLine > 0 {
+		if info, ok := fileLines.New[issue.NewLine]; ok {
+			log.Printf("✅ Matched by Side=RIGHT, NewLine=%d, Position=%d", issue.NewLine, info.Position)
+			return info, true
+		}
+		log.Printf("⚠️ Side=RIGHT, NewLine=%d not in diff", issue.NewLine)
+	}
+
+	if issue.Side == "LEFT" && issue.OldLine > 0 {
+		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			log.Printf("✅ Matched by Side=LEFT, OldLine=%d, Position=%d", issue.OldLine, info.Position)
+			return info, true
+		}
+		log.Printf("⚠️ Side=LEFT, OldLine=%d not in diff", issue.OldLine)
+	}
+
+	// 直接行号匹配
 	if issue.NewLine > 0 {
 		if info, ok := fileLines.New[issue.NewLine]; ok {
-			return info, true
-		}
-	}
-	if issue.OldLine > 0 {
-		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			log.Printf("✅ Matched by NewLine=%d, Position=%d", issue.NewLine, info.Position)
 			return info, true
 		}
 	}
 
+	if issue.OldLine > 0 {
+		if info, ok := fileLines.Old[issue.OldLine]; ok {
+			log.Printf("✅ Matched by OldLine=%d, Position=%d", issue.OldLine, info.Position)
+			return info, true
+		}
+	}
+
+	log.Printf("❌ Failed to resolve: OldLine=%d, NewLine=%d, Code=%q", issue.OldLine, issue.NewLine, cleanCode)
 	return diffLineInfo{}, false
+}
+
+// 辅助函数：通过 position 查找行号
+func findLineNumberByPosition(lines map[int]diffLineInfo, position int) int {
+	for lineNum, info := range lines {
+		if info.Position == position {
+			return lineNum
+		}
+	}
+	return 0
 }
 
 func lineMatches(snippet, content string) bool {
@@ -836,4 +897,11 @@ func escapeTable(value string) string {
 	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
 	trimmed = strings.ReplaceAll(trimmed, "|", "\\|")
 	return trimmed
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

@@ -139,7 +139,8 @@ func (c *GitHubClient) PostComment(repo string, prNum int, comment string) error
 }
 
 // PostInlineComment 向 PR 发布行内评论
-func (c *GitHubClient) PostInlineComment(repo string, prNum int, commitSHA, path string, position int, body string) error {
+func (c *GitHubClient) PostInlineComment(repo string, prNum int, commitSHA, path string, position int, body string, oldLine, newLine int) error {
+	// GitHub 只使用 position 参数，忽略 oldLine 和 newLine
 	commentURL := fmt.Sprintf("https://api.github.com/repos/%s/pulls/%d/comments", repo, prNum)
 
 	commentBody := map[string]interface{}{
