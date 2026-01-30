@@ -177,6 +177,102 @@ func (c *GitHubClient) PostInlineComment(repo string, prNum int, commitSHA, path
 	return nil
 }
 
+// GetIssueComments 获取 PR 的普通评论列表
+func (c *GitHubClient) GetIssueComments(repo string, prNum int) ([]Comment, error) {
+	commentsURL := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d/comments", repo, prNum)
+
+	req, err := http.NewRequest("GET", commentsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var githubComments []struct {
+		ID        int64  `json:"id"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&githubComments); err != nil {
+		return nil, fmt.Errorf("failed to decode comments: %w", err)
+	}
+
+	comments := make([]Comment, len(githubComments))
+	for i, gc := range githubComments {
+		comments[i] = Comment{
+			ID:        gc.ID,
+			Body:      gc.Body,
+			CreatedAt: gc.CreatedAt,
+		}
+	}
+
+	return comments, nil
+}
+
+// GetInlineComments 获取 PR 的行内评论列表
+func (c *GitHubClient) GetInlineComments(repo string, prNum int) ([]Comment, error) {
+	commentsURL := fmt.Sprintf("https://api.github.com/repos/%s/pulls/%d/comments", repo, prNum)
+
+	req, err := http.NewRequest("GET", commentsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inline comments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var githubComments []struct {
+		ID        int64  `json:"id"`
+		Body      string `json:"body"`
+		Path      string `json:"path"`
+		Line      int    `json:"line"`
+		Position  int    `json:"position"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&githubComments); err != nil {
+		return nil, fmt.Errorf("failed to decode inline comments: %w", err)
+	}
+
+	comments := make([]Comment, len(githubComments))
+	for i, gc := range githubComments {
+		comments[i] = Comment{
+			ID:        gc.ID,
+			Body:      gc.Body,
+			Path:      gc.Path,
+			Line:      gc.Line,
+			Position:  gc.Position,
+			CreatedAt: gc.CreatedAt,
+		}
+	}
+
+	return comments, nil
+}
+
 // === VCSProvider 接口实现 ===
 
 // GetDiff 实现 VCSProvider 接口

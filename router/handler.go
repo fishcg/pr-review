@@ -164,6 +164,8 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 		}
 		comment = fmt.Sprintf("🤖 **AI Code Review**\n\n%s", summary)
 	}
+
+	// 发布总评论（每次都发布）
 	if err := vcsClient.PostComment(repo, prNum, comment); err != nil {
 		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
 		return
@@ -255,14 +257,32 @@ func parseIssuesFromReview(content string) []reviewIssue {
 			if file == "" || (oldLine == 0 && newLine == 0) {
 				continue
 			}
-			codeSnippet := ""
-			severityIndex := 3
-			if len(cells) >= 8 {
+
+			// 检测表格格式：是否包含 Side 列
+			// 格式1（9列）: 文件名 | 旧行号 | 新行号 | Side | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改
+			// 格式2（8列）: 文件名 | 旧行号 | 新行号 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改
+			// 格式3（6列）: 文件名 | 旧行号 | 新行号 | 严重程度 | 类别 | 问题描述
+			var side string
+			var codeSnippet string
+			var severityIndex int
+
+			if len(cells) >= 9 {
+				// 9列格式：包含 Side 列
+				side = strings.TrimSpace(cells[3])
+				codeSnippet = strings.Trim(cells[4], "` ")
+				severityIndex = 5
+			} else if len(cells) >= 8 {
+				// 8列格式：不包含 Side 列，但有代码片段
 				codeSnippet = strings.Trim(cells[3], "` ")
 				severityIndex = 4
+			} else {
+				// 6列格式：没有代码片段
+				severityIndex = 3
 			}
+
 			issues = append(issues, reviewIssue{
 				File:       file,
+				Side:       side,
 				OldLine:    oldLine,
 				NewLine:    newLine,
 				Code:       codeSnippet,
@@ -526,6 +546,16 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		}
 	}
 
+	// 获取现有的行内评论用于去重
+	existingComments, err := vcsClient.GetInlineComments(repo, prNum)
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] Failed to get existing inline comments for deduplication: %v", repo, prNum, err)
+		// 继续执行，但不进行去重
+		existingComments = []lib.Comment{}
+	} else {
+		log.Printf("📋 [%s#%d] Found %d existing inline comments", repo, prNum, len(existingComments))
+	}
+
 	unmatched := make([]reviewIssue, 0)
 	for _, issue := range issues {
 		fileLines, ok := positionMap[issue.File]
@@ -584,6 +614,16 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 			log.Printf("📍 Resolved to: OldLine=%d, NewLine=%d (context/modified line)", actualOldLine, actualNewLine)
 		}
 
+		// 检查是否已存在相同的评论（去重）
+		targetLine := actualNewLine
+		if targetLine == 0 {
+			targetLine = actualOldLine
+		}
+		if isDuplicateComment(existingComments, issue.File, targetLine) {
+			log.Printf("⏭️ [%s#%d] Skipping duplicate comment: %s line %d", repo, prNum, issue.File, targetLine)
+			continue
+		}
+
 		// 根据 provider 类型选择合适的参数
 		var lineParam int
 		if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
@@ -617,26 +657,66 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 
 	// 策略 1: 优先使用代码片段精确匹配（最可靠，只要 AI 提供了代码）
 	if cleanCode != "" {
-		// 先在新行中搜索
-		if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
-			actualLine := findLineNumberByPosition(fileLines.New, info.Position)
-			if actualLine != issue.NewLine && issue.NewLine > 0 {
-				log.Printf("⚠️ 行号修正: AI报告NewLine=%d, 实际NewLine=%d (代码片段定位)", issue.NewLine, actualLine)
-			} else {
-				log.Printf("✅ Matched by snippet in New lines, NewLine=%d, Position=%d", actualLine, info.Position)
-			}
-			return info, true
+		// 根据 Side 字段决定搜索顺序
+		var searchNew, searchOld bool
+		if issue.Side == "LEFT" {
+			// LEFT 表示评论在旧版本（删除的代码），优先在旧行中搜索
+			searchOld = true
+			searchNew = true // 如果旧行找不到，再尝试新行
+			log.Printf("🔍 Side=LEFT, will search Old lines first")
+		} else if issue.Side == "RIGHT" {
+			// RIGHT 表示评论在新版本（新增的代码），优先在新行中搜索
+			searchNew = true
+			searchOld = true // 如果新行找不到，再尝试旧行
+			log.Printf("🔍 Side=RIGHT, will search New lines first")
+		} else {
+			// 没有 Side 字段，使用默认策略：先新行后旧行
+			searchNew = true
+			searchOld = true
+			log.Printf("🔍 No Side specified, will search New lines first")
 		}
-		// 再在旧行中搜索
-		if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
-			actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
-			if actualLine != issue.OldLine && issue.OldLine > 0 {
-				log.Printf("⚠️ 行号修正: AI报告OldLine=%d, 实际OldLine=%d (代码片段定位)", issue.OldLine, actualLine)
-			} else {
-				log.Printf("✅ Matched by snippet in Old lines, OldLine=%d, Position=%d", actualLine, info.Position)
+
+		// 在新行中搜索
+		if searchNew && issue.Side != "LEFT" {
+			if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
+				actualLine := findLineNumberByPosition(fileLines.New, info.Position)
+				if actualLine != issue.NewLine && issue.NewLine > 0 {
+					log.Printf("⚠️ 行号修正: AI报告NewLine=%d, 实际NewLine=%d (代码片段定位)", issue.NewLine, actualLine)
+				} else {
+					log.Printf("✅ Matched by snippet in New lines, NewLine=%d, Position=%d", actualLine, info.Position)
+				}
+				return info, true
 			}
-			return info, true
 		}
+
+		// 在旧行中搜索
+		if searchOld && issue.Side != "RIGHT" {
+			if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
+				actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
+				if actualLine != issue.OldLine && issue.OldLine > 0 {
+					log.Printf("⚠️ 行号修正: AI报告OldLine=%d, 实际OldLine=%d (代码片段定位)", issue.OldLine, actualLine)
+				} else {
+					log.Printf("✅ Matched by snippet in Old lines, OldLine=%d, Position=%d", actualLine, info.Position)
+				}
+				return info, true
+			}
+		}
+
+		// 如果 Side 限制了搜索范围但没找到，尝试在另一侧搜索（可能是 AI 的 Side 标记错误）
+		if issue.Side == "LEFT" && searchNew {
+			if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
+				actualLine := findLineNumberByPosition(fileLines.New, info.Position)
+				log.Printf("⚠️ Side=LEFT but found in New lines! NewLine=%d, Position=%d", actualLine, info.Position)
+				return info, true
+			}
+		} else if issue.Side == "RIGHT" && searchOld {
+			if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
+				actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
+				log.Printf("⚠️ Side=RIGHT but found in Old lines! OldLine=%d, Position=%d", actualLine, info.Position)
+				return info, true
+			}
+		}
+
 		log.Printf("❌ Code snippet not found: %q", cleanCode)
 		// 注意：代码片段未找到时，不fallback到行号匹配，直接返回失败
 		// 因为AI提供了代码但找不到，说明可能是错误的问题
@@ -904,4 +984,17 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// isDuplicateComment 检查该行是否已有评论（用于去重）
+// 简化逻辑：只要同一文件的同一行已经有评论，就认为是重复
+func isDuplicateComment(existingComments []lib.Comment, filePath string, line int) bool {
+	for _, comment := range existingComments {
+		// 检查文件路径和行号是否匹配
+		if comment.Path == filePath && comment.Line == line {
+			log.Printf("🔍 Found existing comment on %s:%d", filePath, line)
+			return true
+		}
+	}
+	return false
 }

@@ -253,6 +253,135 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	return nil
 }
 
+// GetIssueComments 获取 MR 的普通评论列表
+func (c *GitLabClient) GetIssueComments(repo string, mrNum int) ([]Comment, error) {
+	encodedRepo := url.PathEscape(repo)
+	notesURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/notes", c.BaseURL, encodedRepo, mrNum)
+
+	req, err := http.NewRequest("GET", notesURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get notes: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var gitlabNotes []struct {
+		ID        int64  `json:"id"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+		System    bool   `json:"system"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&gitlabNotes); err != nil {
+		return nil, fmt.Errorf("failed to decode notes: %w", err)
+	}
+
+	comments := make([]Comment, 0, len(gitlabNotes))
+	for _, note := range gitlabNotes {
+		// 跳过系统评论
+		if note.System {
+			continue
+		}
+		comments = append(comments, Comment{
+			ID:        note.ID,
+			Body:      note.Body,
+			CreatedAt: note.CreatedAt,
+		})
+	}
+
+	return comments, nil
+}
+
+// GetInlineComments 获取 MR 的行内评论列表
+func (c *GitLabClient) GetInlineComments(repo string, mrNum int) ([]Comment, error) {
+	encodedRepo := url.PathEscape(repo)
+	discussionsURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/discussions", c.BaseURL, encodedRepo, mrNum)
+
+	req, err := http.NewRequest("GET", discussionsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get discussions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var gitlabDiscussions []struct {
+		ID    string `json:"id"`
+		Notes []struct {
+			ID        int64  `json:"id"`
+			Body      string `json:"body"`
+			CreatedAt string `json:"created_at"`
+			System    bool   `json:"system"`
+			Position  struct {
+				NewPath string `json:"new_path"`
+				OldPath string `json:"old_path"`
+				NewLine int    `json:"new_line"`
+				OldLine int    `json:"old_line"`
+			} `json:"position"`
+		} `json:"notes"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&gitlabDiscussions); err != nil {
+		return nil, fmt.Errorf("failed to decode discussions: %w", err)
+	}
+
+	comments := make([]Comment, 0)
+	for _, discussion := range gitlabDiscussions {
+		for _, note := range discussion.Notes {
+			// 跳过系统评论
+			if note.System {
+				continue
+			}
+
+			// 只处理有位置信息的评论（行内评论）
+			if note.Position.NewPath == "" && note.Position.OldPath == "" {
+				continue
+			}
+
+			path := note.Position.NewPath
+			if path == "" {
+				path = note.Position.OldPath
+			}
+
+			line := note.Position.NewLine
+			if line == 0 {
+				line = note.Position.OldLine
+			}
+
+			comments = append(comments, Comment{
+				ID:        note.ID,
+				Body:      note.Body,
+				Path:      path,
+				Line:      line,
+				CreatedAt: note.CreatedAt,
+			})
+		}
+	}
+
+	return comments, nil
+}
+
 // GetProviderType 实现 VCSProvider 接口
 func (c *GitLabClient) GetProviderType() string {
 	return ProviderTypeGitLab
