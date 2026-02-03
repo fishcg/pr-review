@@ -21,6 +21,7 @@ type ClaudeCLIClient struct {
 	UserTemplate    string
 	APIKey          string
 	APIURL          string
+	Model           string
 }
 
 // ReviewResult Claude CLI 审查结果
@@ -31,7 +32,7 @@ type ReviewResult struct {
 }
 
 // NewClaudeCLIClient 创建 Claude CLI 客户端
-func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate, apiKey, apiURL string) *ClaudeCLIClient {
+func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate, apiKey, apiURL, model string) *ClaudeCLIClient {
 	return &ClaudeCLIClient{
 		BinaryPath:      binaryPath,
 		AllowedTools:    allowedTools,
@@ -41,6 +42,7 @@ func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, m
 		UserTemplate:    userTemplate,
 		APIKey:          apiKey,
 		APIURL:          apiURL,
+		Model:           model,
 	}
 }
 
@@ -86,6 +88,11 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 	} else {
 		log.Printf("   Claude API URL: using default or environment variable")
 	}
+	if c.Model != "" {
+		log.Printf("   Claude Model: %s (from config file)", c.Model)
+	} else {
+		log.Printf("   Claude Model: using default or environment variable")
+	}
 
 	// 2. 创建执行上下文（带超时）
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -97,7 +104,7 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 	// 设置 Claude API 环境变量
 	// 优先级：配置文件 > 环境变量 > Claude CLI 全局配置
-	cmd.Env = filterAndSetEnv(os.Environ(), c.APIKey, c.APIURL)
+	cmd.Env = filterAndSetEnv(os.Environ(), c.APIKey, c.APIURL, c.Model)
 
 	// 使用 stdin 传递 prompt
 	cmd.Stdin = strings.NewReader(reviewPrompt)
@@ -153,14 +160,15 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 // filterAndSetEnv 过滤环境变量并设置 Claude API 配置
 // 优先级：配置文件 > 环境变量 > Claude CLI 全局配置
-// Claude CLI 使用的环境变量：ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL
-func filterAndSetEnv(envVars []string, apiKey, apiURL string) []string {
+// Claude CLI 使用的环境变量：ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL
+func filterAndSetEnv(envVars []string, apiKey, apiURL, model string) []string {
 	filtered := make([]string, 0, len(envVars))
 
-	// 过滤掉已存在的 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL
+	// 过滤掉已存在的 ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL 和 ANTHROPIC_MODEL
 	for _, env := range envVars {
 		if !strings.HasPrefix(env, "ANTHROPIC_AUTH_TOKEN=") &&
-			!strings.HasPrefix(env, "ANTHROPIC_BASE_URL=") {
+			!strings.HasPrefix(env, "ANTHROPIC_BASE_URL=") &&
+			!strings.HasPrefix(env, "ANTHROPIC_MODEL=") {
 			filtered = append(filtered, env)
 		}
 	}
@@ -173,6 +181,11 @@ func filterAndSetEnv(envVars []string, apiKey, apiURL string) []string {
 	// 如果配置文件中设置了 API URL，添加到环境变量（覆盖原有值）
 	if apiURL != "" {
 		filtered = append(filtered, fmt.Sprintf("ANTHROPIC_BASE_URL=%s", apiURL))
+	}
+
+	// 如果配置文件中设置了 Model，添加到环境变量（覆盖原有值）
+	if model != "" {
+		filtered = append(filtered, fmt.Sprintf("ANTHROPIC_MODEL=%s", model))
 	}
 
 	return filtered

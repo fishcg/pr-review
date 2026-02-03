@@ -1,6 +1,8 @@
 # 编译阶段
-FROM golang:1.24-alpine AS builder
+FROM 172.24.173.77:30500/golang:1.24-alpine AS builder
 WORKDIR /app
+
+ENV GOPROXY=https://goproxy.cn,direct
 
 # 复制依赖文件
 COPY go.mod go.sum ./
@@ -14,14 +16,15 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o pr-review-service .
 
 # 运行阶段 (使用 Node.js 镜像，内置 npm)
-FROM node:24-alpine3.21
+FROM 172.24.173.77:30500/node:24.13.0-alpine
 WORKDIR /app
 
 # 安装 git (用于克隆仓库)
-RUN apk add --no-cache git ca-certificates
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && apk add --no-cache git ca-certificates
 
 # 安装 Claude CLI
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install pnpm -g && pnpm install -g @anthropic-ai/claude-code
 
 # 复制二进制文件
 COPY --from=builder /app/pr-review-service .

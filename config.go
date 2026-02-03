@@ -15,6 +15,7 @@ type ClaudeCLIConfig struct {
 	MaxOutputLength int      `yaml:"max_output_length"` // 最大输出长度
 	APIKey          string   `yaml:"api_key"`           // Anthropic API Key
 	APIURL          string   `yaml:"api_url"`           // Anthropic API URL (可选)
+	Model           string   `yaml:"model"`             // Claude Model (可选)
 }
 
 // RepoCloneConfig 仓库克隆配置
@@ -248,6 +249,10 @@ func (c *Config) GetClaudeCLIAPIKey() string {
 
 func (c *Config) GetClaudeCLIAPIURL() string {
 	return c.ClaudeCLI.APIURL
+}
+
+func (c *Config) GetClaudeCLIModel() string {
+	return c.ClaudeCLI.Model
 }
 
 // 仓库克隆配置的单独 getter 方法

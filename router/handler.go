@@ -35,6 +35,7 @@ type Config interface {
 	GetClaudeCLIMaxOutputLength() int
 	GetClaudeCLIAPIKey() string
 	GetClaudeCLIAPIURL() string
+	GetClaudeCLIModel() string
 	// 仓库克隆配置
 	GetRepoCloneTempDir() string
 	GetRepoCloneTimeout() int
@@ -1057,6 +1058,7 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		userTemplate,
 		appConfig.GetClaudeCLIAPIKey(),
 		appConfig.GetClaudeCLIAPIURL(),
+		appConfig.GetClaudeCLIModel(),
 	)
 
 	result, err := cliClient.ReviewCodeInRepo(workDir, diffText)

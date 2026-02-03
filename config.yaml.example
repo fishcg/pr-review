@@ -40,6 +40,9 @@ claude_cli:
   # 如果配置了值，会覆盖环境变量（优先级：配置文件 > 环境变量 > 全局配置）
   api_url: ""            # Anthropic API Base URL（可选）
   # 留空使用默认 API 地址，如果配置了值会覆盖环境变量 ANTHROPIC_BASE_URL
+  model: "anthropic/claude-sonnet-4.5" # Claude Model（可选）
+  # 例如："anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5"
+  # 留空使用默认模型，如果配置了值会覆盖环境变量 ANTHROPIC_MODEL
 
 # 仓库克隆配置（仅在 review_mode 为 claude_cli 时使用）
 repo_clone:

@@ -93,6 +93,9 @@ data:
       # Will be set as ANTHROPIC_AUTH_TOKEN environment variable
       api_url: ""  # Anthropic API Base URL (optional)
       # Will be set as ANTHROPIC_BASE_URL environment variable
+      model: ""  # Claude Model (optional)
+      # Example: "anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5"
+      # Will be set as ANTHROPIC_MODEL environment variable
 
     # Repository Clone Configuration (only needed for review_mode: "claude_cli")
     repo_clone:
