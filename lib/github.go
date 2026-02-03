@@ -285,6 +285,56 @@ func (c *GitHubClient) GetHeadSHA(repo string, number int) (string, error) {
 	return c.GetPRHeadSHA(repo, number)
 }
 
+// GetBranchInfo 实现 VCSProvider 接口 - 获取分支信息
+func (c *GitHubClient) GetBranchInfo(repo string, prNum int) (*BranchInfo, error) {
+	infoURL := fmt.Sprintf("https://api.github.com/repos/%s/pulls/%d", repo, prNum)
+
+	req, err := http.NewRequest("GET", infoURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PR info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
+	}
+
+	var prInfo struct {
+		Head struct {
+			Ref string `json:"ref"` // source branch
+			SHA string `json:"sha"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"` // target branch
+		} `json:"base"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&prInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode PR info: %w", err)
+	}
+
+	return &BranchInfo{
+		SourceBranch: prInfo.Head.Ref,
+		TargetBranch: prInfo.Base.Ref,
+		SourceSHA:    prInfo.Head.SHA,
+	}, nil
+}
+
+// GetCloneURL 实现 VCSProvider 接口 - 获取克隆 URL
+func (c *GitHubClient) GetCloneURL(repo string) (string, error) {
+	// GitHub repo format: owner/repo
+	// Clone URL: https://github.com/owner/repo.git
+	return fmt.Sprintf("https://github.com/%s.git", repo), nil
+}
+
 // GetProviderType 实现 VCSProvider 接口
 func (c *GitHubClient) GetProviderType() string {
 	return ProviderTypeGitHub

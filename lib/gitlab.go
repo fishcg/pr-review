@@ -227,8 +227,6 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 		return fmt.Errorf("failed to marshal discussion: %w", err)
 	}
 
-	log.Printf("📤 GitLab discussion payload: %s", string(jsonDiscussion))
-
 	req, err := http.NewRequest("POST", discussionURL, bytes.NewBuffer(jsonDiscussion))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -380,6 +378,70 @@ func (c *GitLabClient) GetInlineComments(repo string, mrNum int) ([]Comment, err
 	}
 
 	return comments, nil
+}
+
+// GetBranchInfo 实现 VCSProvider 接口 - 获取分支信息
+func (c *GitLabClient) GetBranchInfo(repo string, mrNum int) (*BranchInfo, error) {
+	encodedRepo := url.PathEscape(repo)
+	infoURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d", c.BaseURL, encodedRepo, mrNum)
+
+	req, err := http.NewRequest("GET", infoURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MR info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var mrInfo struct {
+		SHA          string `json:"sha"`
+		SourceBranch string `json:"source_branch"`
+		TargetBranch string `json:"target_branch"`
+		DiffRefs     struct {
+			HeadSHA string `json:"head_sha"`
+		} `json:"diff_refs"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&mrInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode MR info: %w", err)
+	}
+
+	sourceSHA := mrInfo.SHA
+	if sourceSHA == "" && mrInfo.DiffRefs.HeadSHA != "" {
+		sourceSHA = mrInfo.DiffRefs.HeadSHA
+	}
+
+	return &BranchInfo{
+		SourceBranch: mrInfo.SourceBranch,
+		TargetBranch: mrInfo.TargetBranch,
+		SourceSHA:    sourceSHA,
+	}, nil
+}
+
+// GetCloneURL 实现 VCSProvider 接口 - 获取克隆 URL
+func (c *GitLabClient) GetCloneURL(repo string) (string, error) {
+	// GitLab repo format: group/project 或 namespace/group/project
+	// Clone URL: https://gitlab.com/group/project.git 或自托管地址
+
+	// 解析 BaseURL
+	baseURLParsed, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse base URL: %w", err)
+	}
+
+	// 构建克隆 URL
+	cloneURL := fmt.Sprintf("%s://%s/%s.git", baseURLParsed.Scheme, baseURLParsed.Host, repo)
+	return cloneURL, nil
 }
 
 // GetProviderType 实现 VCSProvider 接口

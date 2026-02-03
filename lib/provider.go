@@ -32,6 +32,12 @@ type VCSProvider interface {
 	// GetInlineComments 获取 PR/MR 的行内评论列表
 	GetInlineComments(repo string, number int) ([]Comment, error)
 
+	// GetBranchInfo 获取 PR/MR 的分支信息
+	GetBranchInfo(repo string, number int) (*BranchInfo, error)
+
+	// GetCloneURL 获取仓库克隆 URL
+	GetCloneURL(repo string) (string, error)
+
 	// GetProviderType 返回提供商类型（用于日志）
 	GetProviderType() string
 }

@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
+	"pr-review/lib"
 	"pr-review/router"
+	"time"
 )
 
 func main() {
@@ -34,12 +36,52 @@ func main() {
 		log.Fatalf("❌ Unsupported VCS provider: %s", AppConfig.VCSProvider)
 	}
 
+	// 启动定期清理任务（如果使用 Claude CLI 模式）
+	if AppConfig.ReviewMode == "claude_cli" {
+		startCleanupTask()
+	}
+
 	// 启动服务
 	log.Printf("🚀 PR Review Service started on :%s", AppConfig.Port)
 	log.Printf("   AI Service: %s", AppConfig.AIApiURL)
 	log.Printf("   AI Model: %s", AppConfig.AIModel)
+	log.Printf("   Review Mode: %s", AppConfig.ReviewMode)
 
 	if err := http.ListenAndServe(":"+AppConfig.Port, nil); err != nil {
 		log.Fatalf("❌ Server failed to start: %v", err)
 	}
+}
+
+// startCleanupTask 启动定期清理任务
+func startCleanupTask() {
+	repoManager := lib.NewRepoManager(
+		AppConfig.RepoClone.TempDir,
+		AppConfig.RepoClone.CloneTimeout,
+		AppConfig.RepoClone.ShallowClone,
+		AppConfig.RepoClone.ShallowDepth,
+	)
+
+	// 立即执行一次清理
+	go func() {
+		log.Printf("🧹 Running initial cleanup task...")
+		if err := repoManager.CleanupOldRepos(24 * time.Hour); err != nil {
+			log.Printf("⚠️ Cleanup task failed: %v", err)
+		}
+	}()
+
+	// 启动定期清理（每小时执行一次）
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+
+		log.Printf("🧹 Cleanup task started (runs every 1 hour)")
+
+		for range ticker.C {
+			log.Printf("🧹 Running scheduled cleanup task...")
+			// 清理超过 24 小时的仓库
+			if err := repoManager.CleanupOldRepos(24 * time.Hour); err != nil {
+				log.Printf("⚠️ Cleanup task failed: %v", err)
+			}
+		}
+	}()
 }

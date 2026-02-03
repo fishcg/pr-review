@@ -19,6 +19,31 @@ port: "7995"
 # 选择版本控制系统: github 或 gitlab
 vcs_provider: "github"
 
+
+# Review 模式: "api" 或 "claude_cli"
+# - api: 使用传统的 AI API 审查（只传入 diff）
+# - claude_cli: 使用 Claude CLI 深度审查（克隆仓库，理解项目上下文）
+review_mode: "claude_cli"
+
+# Claude CLI 配置（仅在 review_mode 为 claude_cli 时使用）
+claude_cli:
+  binary_path: "claude"  # Claude CLI 可执行文件路径（默认从 PATH 查找）
+  allowed_tools:         # 允许 Claude CLI 使用的工具
+    - "Read"
+    - "Glob"
+    - "Grep"
+    - "Bash"
+  timeout: 600           # Claude CLI 执行超时（秒），默认 10 分钟
+  max_output_length: 100000  # 最大输出长度（字节）
+
+# 仓库克隆配置（仅在 review_mode 为 claude_cli 时使用）
+repo_clone:
+  temp_dir: "/tmp/pr-review-repos"  # 临时目录，用于存放克隆的仓库
+  clone_timeout: 180                # 克隆超时（秒），默认 3 分钟
+  shallow_clone: true               # 是否使用浅克隆（节省时间和空间）
+  shallow_depth: 100                # 浅克隆深度
+  cleanup_after_review: true        # Review 后是否立即清理工作目录
+
 # ===== GitHub Configuration =====
 # GitHub Personal Access Token (required when vcs_provider=github)
 # Needs permissions: repo (for private repos) or public_repo (for public repos)

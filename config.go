@@ -7,6 +7,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ClaudeCLIConfig Claude CLI 配置
+type ClaudeCLIConfig struct {
+	BinaryPath      string   `yaml:"binary_path"`       // Claude CLI 路径
+	AllowedTools    []string `yaml:"allowed_tools"`     // 允许使用的工具
+	Timeout         int      `yaml:"timeout"`           // 超时秒数
+	MaxOutputLength int      `yaml:"max_output_length"` // 最大输出长度
+}
+
+// RepoCloneConfig 仓库克隆配置
+type RepoCloneConfig struct {
+	TempDir            string `yaml:"temp_dir"`              // 临时目录
+	CloneTimeout       int    `yaml:"clone_timeout"`         // 克隆超时秒数
+	ShallowClone       bool   `yaml:"shallow_clone"`         // 是否浅克隆
+	ShallowDepth       int    `yaml:"shallow_depth"`         // 浅克隆深度
+	CleanupAfterReview bool   `yaml:"cleanup_after_review"`  // Review 后是否清理
+}
+
 // Config 配置结构
 type Config struct {
 	AIApiURL           string `yaml:"ai_api_url"`
@@ -20,6 +37,15 @@ type Config struct {
 
 	// 行号匹配策略配置
 	LineMatchStrategy string `yaml:"line_match_strategy"` // "snippet_first"(默认) 或 "line_number_first"
+
+	// Review 模式配置
+	ReviewMode string `yaml:"review_mode"` // "api" 或 "claude_cli"
+
+	// Claude CLI 配置
+	ClaudeCLI ClaudeCLIConfig `yaml:"claude_cli"`
+
+	// 仓库克隆配置
+	RepoClone RepoCloneConfig `yaml:"repo_clone"`
 
 	// VCS Provider 配置
 	VCSProvider string `yaml:"vcs_provider"` // "github" 或 "gitlab"
@@ -95,6 +121,40 @@ func LoadConfig(filename string) error {
 		AppConfig.LineMatchStrategy = "snippet_first" // 默认：优先使用代码片段匹配
 	}
 
+	// Review 模式默认值和验证
+	if AppConfig.ReviewMode == "" {
+		AppConfig.ReviewMode = "api" // 默认使用 API 模式
+	}
+	if AppConfig.ReviewMode != "api" && AppConfig.ReviewMode != "claude_cli" {
+		return fmt.Errorf("review_mode must be either 'api' or 'claude_cli', got: %s", AppConfig.ReviewMode)
+	}
+
+	// Claude CLI 配置默认值
+	if AppConfig.ClaudeCLI.BinaryPath == "" {
+		AppConfig.ClaudeCLI.BinaryPath = "claude" // 默认假设 claude 在 PATH 中
+	}
+	if len(AppConfig.ClaudeCLI.AllowedTools) == 0 {
+		AppConfig.ClaudeCLI.AllowedTools = []string{"Read", "Glob", "Grep", "Bash"}
+	}
+	if AppConfig.ClaudeCLI.Timeout == 0 {
+		AppConfig.ClaudeCLI.Timeout = 600 // 默认 10 分钟
+	}
+	if AppConfig.ClaudeCLI.MaxOutputLength == 0 {
+		AppConfig.ClaudeCLI.MaxOutputLength = 100000 // 默认 100KB
+	}
+
+	// 仓库克隆配置默认值
+	if AppConfig.RepoClone.TempDir == "" {
+		AppConfig.RepoClone.TempDir = "/tmp/pr-review-repos"
+	}
+	if AppConfig.RepoClone.CloneTimeout == 0 {
+		AppConfig.RepoClone.CloneTimeout = 180 // 默认 3 分钟
+	}
+	if AppConfig.RepoClone.ShallowDepth == 0 {
+		AppConfig.RepoClone.ShallowDepth = 100 // 默认深度 100
+	}
+	// ShallowClone 和 CleanupAfterReview 默认为 false，不需要显式设置
+
 	return nil
 }
 
@@ -146,4 +206,57 @@ func (c *Config) GetGitlabWebhookToken() string {
 // GetLineMatchStrategy 获取行号匹配策略
 func (c *Config) GetLineMatchStrategy() string {
 	return c.LineMatchStrategy
+}
+
+// GetReviewMode 获取 Review 模式
+func (c *Config) GetReviewMode() string {
+	return c.ReviewMode
+}
+
+// GetClaudeCLIConfig 获取 Claude CLI 配置
+func (c *Config) GetClaudeCLIConfig() ClaudeCLIConfig {
+	return c.ClaudeCLI
+}
+
+// GetRepoCloneConfig 获取仓库克隆配置
+func (c *Config) GetRepoCloneConfig() RepoCloneConfig {
+	return c.RepoClone
+}
+
+// Claude CLI 配置的单独 getter 方法
+func (c *Config) GetClaudeCLIBinaryPath() string {
+	return c.ClaudeCLI.BinaryPath
+}
+
+func (c *Config) GetClaudeCLIAllowedTools() []string {
+	return c.ClaudeCLI.AllowedTools
+}
+
+func (c *Config) GetClaudeCLITimeout() int {
+	return c.ClaudeCLI.Timeout
+}
+
+func (c *Config) GetClaudeCLIMaxOutputLength() int {
+	return c.ClaudeCLI.MaxOutputLength
+}
+
+// 仓库克隆配置的单独 getter 方法
+func (c *Config) GetRepoCloneTempDir() string {
+	return c.RepoClone.TempDir
+}
+
+func (c *Config) GetRepoCloneTimeout() int {
+	return c.RepoClone.CloneTimeout
+}
+
+func (c *Config) GetRepoCloneShallowClone() bool {
+	return c.RepoClone.ShallowClone
+}
+
+func (c *Config) GetRepoCloneShallowDepth() int {
+	return c.RepoClone.ShallowDepth
+}
+
+func (c *Config) GetRepoCloneCleanupAfterReview() bool {
+	return c.RepoClone.CleanupAfterReview
 }
