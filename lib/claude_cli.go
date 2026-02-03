@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -18,6 +19,8 @@ type ClaudeCLIClient struct {
 	MaxOutputLength int
 	SystemPrompt    string
 	UserTemplate    string
+	APIKey          string
+	APIURL          string
 }
 
 // ReviewResult Claude CLI 审查结果
@@ -28,7 +31,7 @@ type ReviewResult struct {
 }
 
 // NewClaudeCLIClient 创建 Claude CLI 客户端
-func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate string) *ClaudeCLIClient {
+func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate, apiKey, apiURL string) *ClaudeCLIClient {
 	return &ClaudeCLIClient{
 		BinaryPath:      binaryPath,
 		AllowedTools:    allowedTools,
@@ -36,6 +39,8 @@ func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, m
 		MaxOutputLength: maxOutputLength,
 		SystemPrompt:    systemPrompt,
 		UserTemplate:    userTemplate,
+		APIKey:          apiKey,
+		APIURL:          apiURL,
 	}
 }
 
@@ -51,7 +56,7 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 - 使用 Grep 工具搜索代码
 - 使用 Bash 工具执行 git 命令
 
-请基于整个项目的上下文进行审查，而不仅仅是 diff 本身。
+必须基于整个项目的上下文进行审查，而不仅仅是 diff 本身。
 
 `
 
@@ -71,6 +76,16 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 	log.Printf("🤖 Starting Claude CLI review...")
 	log.Printf("   Timeout: %v", c.Timeout)
+	if c.APIKey != "" {
+		log.Printf("   Claude API Key: configured (from config file)")
+	} else {
+		log.Printf("   Claude API Key: using environment variable or global config")
+	}
+	if c.APIURL != "" {
+		log.Printf("   Claude API URL: %s (from config file)", c.APIURL)
+	} else {
+		log.Printf("   Claude API URL: using default or environment variable")
+	}
 
 	// 2. 创建执行上下文（带超时）
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -79,6 +94,10 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 	// 3. 执行命令
 	cmd := exec.CommandContext(ctx, c.BinaryPath, args...)
 	cmd.Dir = workDir
+
+	// 设置 Claude API 环境变量
+	// 优先级：配置文件 > 环境变量 > Claude CLI 全局配置
+	cmd.Env = filterAndSetEnv(os.Environ(), c.APIKey, c.APIURL)
 
 	// 使用 stdin 传递 prompt
 	cmd.Stdin = strings.NewReader(reviewPrompt)
@@ -130,6 +149,33 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 		Success: true,
 		Error:   nil,
 	}, nil
+}
+
+// filterAndSetEnv 过滤环境变量并设置 Claude API 配置
+// 优先级：配置文件 > 环境变量 > Claude CLI 全局配置
+// Claude CLI 使用的环境变量：ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL
+func filterAndSetEnv(envVars []string, apiKey, apiURL string) []string {
+	filtered := make([]string, 0, len(envVars))
+
+	// 过滤掉已存在的 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL
+	for _, env := range envVars {
+		if !strings.HasPrefix(env, "ANTHROPIC_AUTH_TOKEN=") &&
+			!strings.HasPrefix(env, "ANTHROPIC_BASE_URL=") {
+			filtered = append(filtered, env)
+		}
+	}
+
+	// 如果配置文件中设置了 API Key，添加到环境变量（覆盖原有值）
+	if apiKey != "" {
+		filtered = append(filtered, fmt.Sprintf("ANTHROPIC_AUTH_TOKEN=%s", apiKey))
+	}
+
+	// 如果配置文件中设置了 API URL，添加到环境变量（覆盖原有值）
+	if apiURL != "" {
+		filtered = append(filtered, fmt.Sprintf("ANTHROPIC_BASE_URL=%s", apiURL))
+	}
+
+	return filtered
 }
 
 // CheckCLIAvailable 检查 Claude CLI 是否可用

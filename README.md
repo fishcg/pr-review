@@ -69,6 +69,15 @@ github_token: "ghp_xxxxxxxxxxxx"  # 需要 repo 权限
 # 或 GitLab 配置
 gitlab_token: "glpat-xxxxxxxxxxxx"  # 需要 api, read_api, write_repository 权限
 gitlab_base_url: ""  # 留空使用 gitlab.com
+
+# Claude CLI 配置（仅当 review_mode: "claude_cli" 时需要）
+claude_cli:
+  binary_path: "claude"
+  allowed_tools: ["Read", "Glob", "Grep", "Bash"]
+  timeout: 600
+  max_output_length: 100000
+  api_key: "sk-ant-xxxxxxxxxxxxx"  # Anthropic API Key
+  api_url: ""  # 可选
 ```
 
 ### 2. 安装依赖
@@ -217,12 +226,37 @@ claude_cli:
     - "Bash"                      # 执行 git 命令
   timeout: 600                    # 超时秒数（10分钟）
   max_output_length: 100000       # 最大输出长度
+  api_key: "sk-ant-xxxxxxxxxxxxx" # Anthropic API Key（必填）
+  api_url: ""                     # Anthropic API URL（可选，默认官方 API）
 ```
 
 **安装 Claude CLI**:
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
+
+**获取 Anthropic API Key**:
+1. 访问 https://console.anthropic.com/
+2. 登录并创建 API Key
+3. 将 API Key 配置到 `claude_cli.api_key`
+
+**配置说明**:
+- `api_key`: Anthropic API Key/Token，用于调用 Claude API
+  - 如果配置了值，会使用配置的 key（覆盖环境变量）
+  - 如果留空（`""`），会使用环境变量 `ANTHROPIC_AUTH_TOKEN`
+  - 如果环境变量也没有，会使用 Claude CLI 的全局配置
+- `api_url`: 自定义 API Base URL（可选）
+  - 留空使用默认 API 地址
+  - 如果配置了值，会覆盖环境变量 `ANTHROPIC_BASE_URL`
+
+**Claude CLI 环境变量**:
+- `ANTHROPIC_AUTH_TOKEN`: 认证令牌（不是 `ANTHROPIC_API_KEY`）
+- `ANTHROPIC_BASE_URL`: API 基础地址（不是 `ANTHROPIC_API_URL`）
+
+**优先级（从高到低）**:
+1. 配置文件（`config.yaml` 中的 `claude_cli.api_key` 和 `claude_cli.api_url`）
+2. 环境变量（`ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL`）
+3. Claude CLI 全局配置（`~/.config/claude/config.json`）
 
 ### 仓库克隆配置
 
@@ -483,16 +517,43 @@ gitlab_webhook_token: "your-secret-token"
 
 ### Docker 部署
 
+Docker 镜像已内置 Claude CLI 支持，包含以下组件：
+- ✅ Git（用于仓库克隆）
+- ✅ Node.js 和 npm
+- ✅ Claude CLI (`@anthropic-ai/claude-code`)
+
 ```bash
 # 构建镜像
 docker build -t pr-review-service:v1 .
 
-# 运行容器
+# 运行容器（API 模式）
 docker run -d \
   -p 7995:7995 \
   -v $(pwd)/config.yaml:/app/config.yaml \
   pr-review-service:v1
+
+# 运行容器（Claude CLI 模式）
+docker run -d \
+  -p 7995:7995 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v /tmp/pr-review-repos:/tmp/pr-review-repos \
+  pr-review-service:v1
+
+# 或通过环境变量传递 API Key（推荐，更安全）
+docker run -d \
+  -p 7995:7995 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  -v /tmp/pr-review-repos:/tmp/pr-review-repos \
+  -e ANTHROPIC_AUTH_TOKEN="sk-ant-xxxxxxxxxxxxx" \
+  -e ANTHROPIC_BASE_URL="https://api.anthropic.com" \
+  pr-review-service:v1
 ```
+
+**注意**：
+- Claude CLI 模式需要挂载临时目录（`/tmp/pr-review-repos`）用于仓库克隆
+- 确保 `config.yaml` 中的 `repo_clone.temp_dir` 与挂载路径一致
+- **必须配置 Anthropic API Key**（在 config.yaml 或通过环境变量 `ANTHROPIC_AUTH_TOKEN`）
+- ⚠️ Claude CLI 使用 `ANTHROPIC_AUTH_TOKEN`，不是 `ANTHROPIC_API_KEY`
 
 ### Kubernetes 部署
 
@@ -502,7 +563,27 @@ docker run -d \
 kubectl apply -f k8s.yaml
 ```
 
-**注意**: 需要先创建包含配置的 ConfigMap 或 Secret。
+**配置说明**:
+
+1. **资源配置**（`k8s.yaml` 已针对 Claude CLI 模式优化）:
+   - API 模式：100Mi 内存 + 100m CPU（requests）
+   - Claude CLI 模式：1Gi 内存 + 1000m CPU（limits）
+
+2. **存储配置**:
+   - 使用 `emptyDir` 挂载 `/tmp/pr-review-repos`
+   - 限制大小为 5Gi
+   - 每个 Pod 独立的临时存储
+
+3. **启用 Claude CLI 模式**:
+   - 编辑 ConfigMap 中的 `review_mode: "claude_cli"`
+   - 配置已包含 `claude_cli` 和 `repo_clone` 相关参数
+   - 重新应用配置：`kubectl apply -f k8s.yaml`
+   - 重启 Pod：`kubectl rollout restart deployment/pr-review-service`
+
+**注意**:
+- Claude CLI 需要更多资源，建议在生产环境中调整资源限制
+- 使用 `emptyDir` 意味着 Pod 重启会丢失临时数据（这是预期行为）
+- 如果需要持久化，可以使用 PVC 替代 `emptyDir`
 
 #### 使用 NodePort（外部访问）
 
@@ -684,9 +765,11 @@ AI 将按照以下结构输出审查结果：
 #### Q: Claude CLI 模式需要哪些准备？
 
 1. 安装 Claude CLI：`npm install -g @anthropic-ai/claude-code`
-2. 配置 `review_mode: "claude_cli"`
-3. 配置 `claude_cli` 和 `repo_clone` 相关参数
-4. 确保 Token 有克隆仓库的权限（HTTPS + Token 认证）
+2. 获取 Anthropic API Key：https://console.anthropic.com/
+3. 配置 `review_mode: "claude_cli"`
+4. 配置 `claude_cli` 相关参数（包括 `api_key`）
+5. 配置 `repo_clone` 相关参数
+6. 确保 VCS Token 有克隆仓库的权限（HTTPS + Token 认证）
 
 #### Q: 临时目录占用磁盘空间怎么办？
 
@@ -694,6 +777,91 @@ AI 将按照以下结构输出审查结果：
 - 每小时清理超过 24 小时的仓库
 - 审查完成后立即清理（如果 `cleanup_after_review: true`）
 - 可以手动清理：`rm -rf /tmp/pr-review-repos/*`
+
+#### Q: 如何配置 Anthropic API Key？
+
+有多种配置方式，按优先级从高到低排列：
+
+**方法 1: 配置文件（最高优先级）**
+```yaml
+claude_cli:
+  api_key: "sk-ant-xxxxxxxxxxxxx"  # 会覆盖环境变量
+  api_url: ""                      # 可选，留空使用默认
+```
+- ✅ 推荐用于开发环境
+- ✅ 明确知道使用的是哪个 key
+- ⚠️ 不要提交到 git
+
+**方法 2: 环境变量（第二优先级）**
+```bash
+export ANTHROPIC_AUTH_TOKEN="sk-ant-xxxxxxxxxxxxx"
+export ANTHROPIC_BASE_URL="https://api.anthropic.com"  # 可选
+```
+- ✅ 推荐用于生产环境
+- ✅ 更安全，不会泄露到代码仓库
+- 💡 配置文件中 `api_key` 留空（`""`）时才会生效
+- ⚠️ 注意：Claude CLI 使用 `ANTHROPIC_AUTH_TOKEN`，不是 `ANTHROPIC_API_KEY`
+
+**方法 3: Docker 环境变量**
+```bash
+docker run \
+  -e ANTHROPIC_AUTH_TOKEN="sk-ant-xxxxxxxxxxxxx" \
+  -e ANTHROPIC_BASE_URL="https://api.anthropic.com" \
+  ...
+```
+
+**方法 4: Kubernetes Secret**
+```yaml
+containers:
+  - name: server
+    env:
+      - name: ANTHROPIC_AUTH_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: claude-api-secret
+            key: auth-token
+      - name: ANTHROPIC_BASE_URL
+        value: "https://api.anthropic.com"  # 可选
+```
+
+**方法 5: Claude CLI 全局配置（最低优先级）**
+```bash
+# Claude CLI 会自动使用 ~/.config/claude/config.json
+# 仅当配置文件和环境变量都没有设置时才会使用
+```
+
+**优先级总结**:
+```
+配置文件 > 环境变量 > Claude CLI 全局配置
+```
+
+**实际场景示例**:
+
+场景 1: 只配置了 api_key，没有配置 api_url
+```yaml
+claude_cli:
+  api_key: "sk-ant-xxxxxxxxxxxxx"
+  api_url: ""  # 留空
+```
+→ 使用配置的 api_key + Claude CLI 默认 URL
+
+场景 2: 什么都没配置
+```yaml
+claude_cli:
+  api_key: ""  # 留空
+  api_url: ""  # 留空
+```
+→ 使用环境变量 `ANTHROPIC_AUTH_TOKEN` 或 Claude CLI 全局配置
+
+场景 3: 配置文件和环境变量都设置了
+```yaml
+claude_cli:
+  api_key: "sk-ant-config-key"
+```
+```bash
+export ANTHROPIC_AUTH_TOKEN="sk-ant-env-key"
+```
+→ 使用配置文件中的 `sk-ant-config-key`（配置文件优先级更高）
 
 ### GitHub 相关
 

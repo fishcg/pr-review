@@ -33,6 +33,8 @@ type Config interface {
 	GetClaudeCLIAllowedTools() []string
 	GetClaudeCLITimeout() int
 	GetClaudeCLIMaxOutputLength() int
+	GetClaudeCLIAPIKey() string
+	GetClaudeCLIAPIURL() string
 	// 仓库克隆配置
 	GetRepoCloneTempDir() string
 	GetRepoCloneTimeout() int
@@ -138,19 +140,24 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 	if reviewMode == "claude_cli" {
 		// Claude CLI 模式
+		log.Printf("🔧 [%s#%d] Using Claude CLI mode (deep context review)", repo, prNum)
 		reviewContent, diffText, err = processWithClaudeCLI(vcsClient, repo, prNum, token, providerType)
 		if err != nil {
-			log.Printf("❌ [%s#%d] Claude CLI failed: %v", repo, prNum, err)
-			// 可选：降级到 API 模式
-			log.Printf("⚠️ [%s#%d] Falling back to API mode", repo, prNum)
+			log.Printf("❌ [%s#%d] Claude CLI mode failed: %v", repo, prNum, err)
+			log.Printf("⚠️ [%s#%d] Attempting fallback to API mode...", repo, prNum)
+
+			// 降级到 API 模式
 			reviewContent, diffText, err = processWithAPI(vcsClient, repo, prNum)
 			if err != nil {
 				log.Printf("❌ [%s#%d] API fallback also failed: %v", repo, prNum, err)
+				log.Printf("💥 [%s#%d] Review completely failed - both Claude CLI and API modes unsuccessful", repo, prNum)
 				return
 			}
+			log.Printf("✅ [%s#%d] Successfully fell back to API mode", repo, prNum)
 		}
 	} else {
 		// API 模式
+		log.Printf("🔧 [%s#%d] Using API mode (diff-based review)", repo, prNum)
 		reviewContent, diffText, err = processWithAPI(vcsClient, repo, prNum)
 		if err != nil {
 			log.Printf("❌ [%s#%d] API review failed: %v", repo, prNum, err)
@@ -160,7 +167,6 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 	// === D. 发布评论 ===
 	inlineMode := appConfig.GetInlineIssueComment()
-	log.Printf("📝 [%s#%d] Posting review comment... (inline: %v)", repo, prNum, inlineMode)
 
 	comment := fmt.Sprintf("🤖 **AI Code Review**\n\n%s", reviewContent)
 	if inlineMode {
@@ -551,8 +557,6 @@ func parseOldHunkStart(hunkLine string) int {
 }
 
 func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSProvider, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
-	log.Printf("📝 [%s#%d] Processing %d inline issues...", repo, prNum, len(issues))
-
 	// 获取现有的行内评论用于去重
 	existingComments, err := vcsClient.GetInlineComments(repo, prNum)
 	if err != nil {
@@ -953,47 +957,57 @@ func isDuplicateComment(existingComments []lib.Comment, filePath string, line in
 // processWithAPI 使用 API 模式处理审查
 func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewContent string, diffText string, err error) {
 	// 获取 Diff
+	log.Printf("📄 [%s#%d] Fetching diff...", repo, prNum)
 	diffText, err = vcsClient.GetDiff(repo, prNum)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get diff: %w", err)
 	}
-
-	log.Printf("🤖 [%s#%d] Calling AI API for review...", repo, prNum)
+	log.Printf("✅ [%s#%d] Diff fetched (%d bytes)", repo, prNum, len(diffText))
 
 	// 调用 AI 审查
+	log.Printf("🤖 [%s#%d] Calling AI API for review...", repo, prNum)
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
 	aiClient := lib.NewAIClient(apiURL, apiKey, model, systemPrompt, userTemplate)
 	reviewContent, err = aiClient.ReviewCode(diffText)
 	if err != nil {
+		log.Printf("❌ [%s#%d] AI API call failed: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("AI review failed: %w", err)
 	}
 
+	log.Printf("✅ [%s#%d] AI API review completed (output: %d bytes)", repo, prNum, len(reviewContent))
 	return reviewContent, diffText, nil
 }
 
 // processWithClaudeCLI 使用 Claude CLI 模式处理审查
 func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, token, providerType string) (reviewContent string, diffText string, err error) {
 	// 1. 获取分支信息
+	log.Printf("📋 [%s#%d] [Claude CLI Step 1/5] Fetching branch info...", repo, prNum)
 	branchInfo, err := vcsClient.GetBranchInfo(repo, prNum)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get branch info: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get branch info: %w", err)
 	}
 
-	log.Printf("🌿 [%s#%d] Branch: %s -> %s", repo, prNum, branchInfo.SourceBranch, branchInfo.TargetBranch)
+	log.Printf("🌿 [%s#%d] Branch: %s -> %s (SHA: %s)", repo, prNum, branchInfo.SourceBranch, branchInfo.TargetBranch, branchInfo.SourceSHA[:8])
 
 	// 2. 获取克隆 URL
+	log.Printf("🔗 [%s#%d] [Claude CLI Step 2/5] Getting clone URL...", repo, prNum)
 	cloneURL, err := vcsClient.GetCloneURL(repo)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get clone URL: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get clone URL: %w", err)
 	}
 
 	// 3. 构建带认证的克隆 URL
 	authenticatedURL, err := lib.BuildCloneURL(cloneURL, token, providerType)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to build authenticated clone URL: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to build clone URL: %w", err)
 	}
 
 	// 4. 克隆仓库
+	log.Printf("📦 [%s#%d] [Claude CLI Step 3/5] Cloning repository and checking out branch...", repo, prNum)
 	repoManager := lib.NewRepoManager(
 		appConfig.GetRepoCloneTempDir(),
 		appConfig.GetRepoCloneTimeout(),
@@ -1003,29 +1017,36 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 
 	workDir, err := repoManager.CloneAndCheckout(authenticatedURL, *branchInfo)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to clone/checkout: %v (this will trigger fallback)", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to clone repository: %w", err)
 	}
+	log.Printf("✅ [%s#%d] Repository cloned to: %s", repo, prNum, workDir)
 
 	// 5. 清理工作目录（defer）
 	if appConfig.GetRepoCloneCleanupAfterReview() {
 		defer func() {
 			if cleanupErr := repoManager.Cleanup(workDir); cleanupErr != nil {
 				log.Printf("⚠️ [%s#%d] Cleanup failed: %v", repo, prNum, cleanupErr)
+			} else {
+				log.Printf("✅ [%s#%d] Work directory cleaned up", repo, prNum)
 			}
 		}()
 	}
 
 	// 6. 获取 diff（仍然需要 diff 用于行内评论）
+	log.Printf("📄 [%s#%d] [Claude CLI Step 4/5] Fetching diff for inline comments...", repo, prNum)
 	diffText, err = vcsClient.GetDiff(repo, prNum)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get diff: %w", err)
 	}
 
 	// 7. 使用 Claude CLI 审查
+	log.Printf("🤖 [%s#%d] [Claude CLI Step 5/5] Starting Claude CLI review with full project context...", repo, prNum)
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
-	_ = apiURL  // 不使用，但需要接收
-	_ = apiKey  // 不使用，但需要接收
-	_ = model   // 不使用，但需要接收
+	_ = apiURL // 不使用，但需要接收
+	_ = apiKey // 不使用，但需要接收
+	_ = model  // 不使用，但需要接收
 
 	cliClient := lib.NewClaudeCLIClient(
 		appConfig.GetClaudeCLIBinaryPath(),
@@ -1034,16 +1055,21 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		appConfig.GetClaudeCLIMaxOutputLength(),
 		systemPrompt,
 		userTemplate,
+		appConfig.GetClaudeCLIAPIKey(),
+		appConfig.GetClaudeCLIAPIURL(),
 	)
 
 	result, err := cliClient.ReviewCodeInRepo(workDir, diffText)
 	if err != nil {
+		log.Printf("❌ [%s#%d] Claude CLI execution error: %v (will trigger fallback)", repo, prNum, err)
 		return "", "", fmt.Errorf("Claude CLI review failed: %w", err)
 	}
 
 	if !result.Success {
+		log.Printf("❌ [%s#%d] Claude CLI returned unsuccessful result: %v (will trigger fallback)", repo, prNum, result.Error)
 		return "", "", fmt.Errorf("Claude CLI review unsuccessful: %v", result.Error)
 	}
 
+	log.Printf("✅ [%s#%d] Claude CLI review completed successfully (output: %d bytes)", repo, prNum, len(result.Content))
 	return result.Content, diffText, nil
 }

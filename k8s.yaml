@@ -23,17 +23,22 @@ spec:
             - name: config
               mountPath: /app/config.yaml
               subPath: config.yaml
+            - name: repo-temp
+              mountPath: /tmp/pr-review-repos
           resources:
-            requests: # 这种服务非常省资源
-              memory: "20Mi"
-              cpu: "10m"
+            requests: # API 模式资源较少，Claude CLI 模式需要更多
+              memory: "100Mi"
+              cpu: "100m"
             limits:
-              memory: "40Mi"
-              cpu: "20m"
+              memory: "1Gi"  # Claude CLI 模式需要更多内存
+              cpu: "1000m"   # Claude CLI 模式需要更多 CPU
       volumes:
         - name: config
           configMap:
             name: pr-review-config
+        - name: repo-temp
+          emptyDir:
+            sizeLimit: 5Gi  # 限制临时目录大小
 ---
 apiVersion: v1
 kind: Service
@@ -74,6 +79,28 @@ data:
     # GitHub Personal Access Token (required for API access)
     # Needs permissions: repo (for private repos) or public_repo (for public repos)
     github_token: "test-github-token"
+
+    # Review Mode: "api" or "claude_cli"
+    review_mode: "api"
+
+    # Claude CLI Configuration (only needed for review_mode: "claude_cli")
+    claude_cli:
+      binary_path: "claude"
+      allowed_tools: ["Read", "Glob", "Grep", "Bash"]
+      timeout: 600
+      max_output_length: 100000
+      api_key: "sk-ant-xxxxxxxxxxxxxxxxxxxxx"  # Anthropic API Key/Token (required)
+      # Will be set as ANTHROPIC_AUTH_TOKEN environment variable
+      api_url: ""  # Anthropic API Base URL (optional)
+      # Will be set as ANTHROPIC_BASE_URL environment variable
+
+    # Repository Clone Configuration (only needed for review_mode: "claude_cli")
+    repo_clone:
+      temp_dir: "/tmp/pr-review-repos"
+      clone_timeout: 180
+      shallow_clone: true
+      shallow_depth: 100
+      cleanup_after_review: true
 
     # AI Review Prompts
     # System prompt - defines the AI's role and behavior

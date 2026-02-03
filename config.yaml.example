@@ -35,6 +35,11 @@ claude_cli:
     - "Bash"
   timeout: 600           # Claude CLI 执行超时（秒），默认 10 分钟
   max_output_length: 100000  # 最大输出长度（字节）
+  api_key: "sk-ant-xxxxxxxxxxxxxxxxxxxxx"  # Anthropic API Key/Token
+  # 留空（""）会使用环境变量 ANTHROPIC_AUTH_TOKEN 或 Claude CLI 全局配置
+  # 如果配置了值，会覆盖环境变量（优先级：配置文件 > 环境变量 > 全局配置）
+  api_url: ""            # Anthropic API Base URL（可选）
+  # 留空使用默认 API 地址，如果配置了值会覆盖环境变量 ANTHROPIC_BASE_URL
 
 # 仓库克隆配置（仅在 review_mode 为 claude_cli 时使用）
 repo_clone:

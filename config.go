@@ -13,6 +13,8 @@ type ClaudeCLIConfig struct {
 	AllowedTools    []string `yaml:"allowed_tools"`     // 允许使用的工具
 	Timeout         int      `yaml:"timeout"`           // 超时秒数
 	MaxOutputLength int      `yaml:"max_output_length"` // 最大输出长度
+	APIKey          string   `yaml:"api_key"`           // Anthropic API Key
+	APIURL          string   `yaml:"api_url"`           // Anthropic API URL (可选)
 }
 
 // RepoCloneConfig 仓库克隆配置
@@ -238,6 +240,14 @@ func (c *Config) GetClaudeCLITimeout() int {
 
 func (c *Config) GetClaudeCLIMaxOutputLength() int {
 	return c.ClaudeCLI.MaxOutputLength
+}
+
+func (c *Config) GetClaudeCLIAPIKey() string {
+	return c.ClaudeCLI.APIKey
+}
+
+func (c *Config) GetClaudeCLIAPIURL() string {
+	return c.ClaudeCLI.APIURL
 }
 
 // 仓库克隆配置的单独 getter 方法

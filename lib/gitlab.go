@@ -196,27 +196,15 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 	// 根据 oldLine 和 newLine 设置行位置
 	// GitLab API 的限制：每次只能指定 old_line 或 new_line 中的一个
 	// 对于修改的行（同时有 old_line 和 new_line），优先使用 new_line
-	var lineCode string
 	if newLine > 0 {
 		// 新增的行或修改的行：只设置 new_line
 		positionObj["new_line"] = newLine
-		lineCode = fmt.Sprintf("%s_%d_%d", mrInfo.DiffRefs.BaseSHA, 0, newLine)
-		if oldLine > 0 {
-			log.Printf("📝 GitLab inline comment: new_line=%d (modified line, oldLine=%d ignored)", newLine, oldLine)
-		} else {
-			log.Printf("📝 GitLab inline comment: new_line=%d (added line)", newLine)
-		}
 	} else if oldLine > 0 {
 		// 删除的行：只设置 old_line
 		positionObj["old_line"] = oldLine
-		lineCode = fmt.Sprintf("%s_%d_%d", mrInfo.DiffRefs.BaseSHA, oldLine, 0)
-		log.Printf("📝 GitLab inline comment: old_line=%d (deleted line)", oldLine)
 	} else {
 		return fmt.Errorf("invalid line numbers: oldLine=%d, newLine=%d", oldLine, newLine)
 	}
-
-	log.Printf("📝 Generated line_code: %s", lineCode)
-
 	discussionBody := map[string]interface{}{
 		"body":     body,
 		"position": positionObj,
