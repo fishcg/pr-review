@@ -27,6 +27,20 @@ type Config interface {
 	GetInlineIssueComment() bool
 	GetCommentOnlyChanges() bool
 	GetLineMatchStrategy() string
+	GetReviewMode() string
+	// Claude CLI 配置
+	GetClaudeCLIBinaryPath() string
+	GetClaudeCLIAllowedTools() []string
+	GetClaudeCLITimeout() int
+	GetClaudeCLIMaxOutputLength() int
+	GetClaudeCLIAPIKey() string
+	GetClaudeCLIAPIURL() string
+	// 仓库克隆配置
+	GetRepoCloneTempDir() string
+	GetRepoCloneTimeout() int
+	GetRepoCloneShallowClone() bool
+	GetRepoCloneShallowDepth() int
+	GetRepoCloneCleanupAfterReview() bool
 }
 
 var appConfig Config
@@ -116,31 +130,43 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 		return
 	}
 
-	log.Printf("🔧 [%s#%d] Using VCS provider: %s", repo, prNum, vcsClient.GetProviderType())
+	// === B. 根据 ReviewMode 选择处理策略 ===
+	reviewMode := appConfig.GetReviewMode()
+	log.Printf("🚀 [%s#%d] Starting review (mode: %s, provider: %s)", repo, prNum, reviewMode, vcsClient.GetProviderType())
 
-	// === B. 获取 Diff ===
-	log.Printf("🔍 [%s#%d] Fetching diff...", repo, prNum)
+	var reviewContent string
+	var diffText string
+	var err error
 
-	diffText, err := vcsClient.GetDiff(repo, prNum)
-	if err != nil {
-		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
-		return
-	}
+	if reviewMode == "claude_cli" {
+		// Claude CLI 模式
+		log.Printf("🔧 [%s#%d] Using Claude CLI mode (deep context review)", repo, prNum)
+		reviewContent, diffText, err = processWithClaudeCLI(vcsClient, repo, prNum, token, providerType)
+		if err != nil {
+			log.Printf("❌ [%s#%d] Claude CLI mode failed: %v", repo, prNum, err)
+			log.Printf("⚠️ [%s#%d] Attempting fallback to API mode...", repo, prNum)
 
-	// === C. 调用 AI 审查 ===
-	log.Printf("🤖 [%s#%d] Sending to AI for review...", repo, prNum)
-
-	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
-	aiClient := lib.NewAIClient(apiURL, apiKey, model, systemPrompt, userTemplate)
-	reviewContent, err := aiClient.ReviewCode(diffText)
-	if err != nil {
-		log.Printf("❌ [%s#%d] %v", repo, prNum, err)
-		return
+			// 降级到 API 模式
+			reviewContent, diffText, err = processWithAPI(vcsClient, repo, prNum)
+			if err != nil {
+				log.Printf("❌ [%s#%d] API fallback also failed: %v", repo, prNum, err)
+				log.Printf("💥 [%s#%d] Review completely failed - both Claude CLI and API modes unsuccessful", repo, prNum)
+				return
+			}
+			log.Printf("✅ [%s#%d] Successfully fell back to API mode", repo, prNum)
+		}
+	} else {
+		// API 模式
+		log.Printf("🔧 [%s#%d] Using API mode (diff-based review)", repo, prNum)
+		reviewContent, diffText, err = processWithAPI(vcsClient, repo, prNum)
+		if err != nil {
+			log.Printf("❌ [%s#%d] API review failed: %v", repo, prNum, err)
+			return
+		}
 	}
 
 	// === D. 发布评论 ===
 	inlineMode := appConfig.GetInlineIssueComment()
-	log.Printf("📝 [%s#%d] Posting review comment... (inline: %v)", repo, prNum, inlineMode)
 
 	comment := fmt.Sprintf("🤖 **AI Code Review**\n\n%s", reviewContent)
 	if inlineMode {
@@ -456,8 +482,6 @@ func buildDiffPositionMap(diffText string) map[string]diffPositionLines {
 
 		// 只处理有效的 diff 行
 		if !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, " ") {
-			// 跳过非标准行（例如：某些 diff 工具的注释）
-			log.Printf("⚠️ Skipping non-standard diff line in %s: %q", currentFile, line)
 			continue
 		}
 
@@ -533,44 +557,25 @@ func parseOldHunkStart(hunkLine string) int {
 }
 
 func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSProvider, positionMap map[string]diffPositionLines, issues []reviewIssue) []reviewIssue {
-	// 调试: 输出 position map 的统计信息
-	log.Printf("📊 [%s#%d] Diff position map statistics:", repo, prNum)
-	for file, lines := range positionMap {
-		log.Printf("  File: %s - Old lines: %d, New lines: %d", file, len(lines.Old), len(lines.New))
-		// 输出前10个新行的映射，用于调试
-		log.Printf("  New line mappings (first 10):")
-		for i := 1; i <= 10 && i <= len(lines.New); i++ {
-			if info, ok := lines.New[i]; ok {
-				log.Printf("    NewLine[%d] -> Position=%d, Type=%q, Content=%q", i, info.Position, info.Type, truncateString(info.Content, 50))
-			}
-		}
-	}
-
 	// 获取现有的行内评论用于去重
 	existingComments, err := vcsClient.GetInlineComments(repo, prNum)
 	if err != nil {
-		log.Printf("⚠️ [%s#%d] Failed to get existing inline comments for deduplication: %v", repo, prNum, err)
-		// 继续执行，但不进行去重
+		log.Printf("⚠️ [%s#%d] Failed to get existing inline comments: %v", repo, prNum, err)
 		existingComments = []lib.Comment{}
-	} else {
-		log.Printf("📋 [%s#%d] Found %d existing inline comments", repo, prNum, len(existingComments))
 	}
 
 	unmatched := make([]reviewIssue, 0)
+	posted := 0
+
 	for _, issue := range issues {
 		fileLines, ok := positionMap[issue.File]
 		if !ok {
-			log.Printf("⚠️ [%s#%d] File not in diff for inline comment: %s", repo, prNum, issue.File)
 			unmatched = append(unmatched, issue)
 			continue
 		}
 
-		log.Printf("🔍 [%s#%d] Attempting to match issue: File=%s, OldLine=%d, NewLine=%d, Side=%s, Code=%q",
-			repo, prNum, issue.File, issue.OldLine, issue.NewLine, issue.Side, issue.Code)
-
 		lineInfo, ok := resolveLineInfo(fileLines, issue)
 		if !ok {
-			log.Printf("⚠️ [%s#%d] Line not in diff for inline comment: %s (old:%d new:%d)", repo, prNum, issue.File, issue.OldLine, issue.NewLine)
 			unmatched = append(unmatched, issue)
 			continue
 		}
@@ -579,18 +584,11 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		commentOnlyChanges := appConfig.GetCommentOnlyChanges()
 		if lineInfo.Type == " " {
 			if commentOnlyChanges {
-				// 用户配置了只评论修改的行，完全忽略上下文行的问题
-				// 不添加到 unmatched，也不会出现在大评论中
-				log.Printf("⚠️ [%s#%d] Ignoring context line issue (comment_only_changes enabled): %s line %d", repo, prNum, issue.File, issue.NewLine)
 				continue
 			} else if vcsClient.GetProviderType() == lib.ProviderTypeGitLab {
-				// GitLab API 不支持在上下文行上评论
-				// 但用户没有开启 comment_only_changes，所以添加到大评论的未定位问题表格中
-				log.Printf("⚠️ [%s#%d] Skipping context line (GitLab limitation): %s line %d", repo, prNum, issue.File, issue.NewLine)
 				unmatched = append(unmatched, issue)
 				continue
 			}
-			// GitHub 且 comment_only_changes=false，可以正常评论上下文行
 		}
 
 		body := buildInlineBody(issue)
@@ -598,20 +596,14 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 		// 从 lineInfo 中提取实际的行号（通过 position 反查）
 		var actualOldLine, actualNewLine int
 		if lineInfo.Type == "+" {
-			// 新增行：只有 new_line
 			actualNewLine = findLineNumberByPosition(fileLines.New, lineInfo.Position)
 			actualOldLine = 0
-			log.Printf("📍 Resolved to: NewLine=%d (added line)", actualNewLine)
 		} else if lineInfo.Type == "-" {
-			// 删除行：只有 old_line
 			actualOldLine = findLineNumberByPosition(fileLines.Old, lineInfo.Position)
 			actualNewLine = 0
-			log.Printf("📍 Resolved to: OldLine=%d (deleted line)", actualOldLine)
 		} else {
-			// 上下文行或修改行：同时有 old_line 和 new_line
 			actualOldLine = findLineNumberByPosition(fileLines.Old, lineInfo.Position)
 			actualNewLine = findLineNumberByPosition(fileLines.New, lineInfo.Position)
-			log.Printf("📍 Resolved to: OldLine=%d, NewLine=%d (context/modified line)", actualOldLine, actualNewLine)
 		}
 
 		// 检查是否已存在相同的评论（去重）
@@ -620,7 +612,6 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 			targetLine = actualOldLine
 		}
 		if isDuplicateComment(existingComments, issue.File, targetLine) {
-			log.Printf("⏭️ [%s#%d] Skipping duplicate comment: %s line %d", repo, prNum, issue.File, targetLine)
 			continue
 		}
 
@@ -636,10 +627,14 @@ func postInlineIssues(repo string, prNum int, headSHA string, vcsClient lib.VCSP
 
 		// 调用 PostInlineComment，传递实际的行号信息
 		if err := vcsClient.PostInlineComment(repo, prNum, headSHA, issue.File, lineParam, body, actualOldLine, actualNewLine); err != nil {
-			log.Printf("❌ [%s#%d] %v", repo, prNum, err)
+			log.Printf("❌ [%s#%d] Failed to post inline comment: %v", repo, prNum, err)
 			unmatched = append(unmatched, issue)
+		} else {
+			posted++
 		}
 	}
+
+	log.Printf("✅ [%s#%d] Posted %d inline comments, %d unmatched", repo, prNum, posted, len(unmatched))
 	return unmatched
 }
 
@@ -651,40 +646,26 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 	}
 
 	if cleanCode != "" && isInvalidSnippet(cleanCode) {
-		log.Printf("⚠️ Invalid snippet: %q", cleanCode)
 		return diffLineInfo{}, false
 	}
 
-	// 策略 1: 优先使用代码片段精确匹配（最可靠，只要 AI 提供了代码）
+	// 策略 1: 优先使用代码片段精确匹配
 	if cleanCode != "" {
-		// 根据 Side 字段决定搜索顺序
 		var searchNew, searchOld bool
 		if issue.Side == "LEFT" {
-			// LEFT 表示评论在旧版本（删除的代码），优先在旧行中搜索
 			searchOld = true
-			searchNew = true // 如果旧行找不到，再尝试新行
-			log.Printf("🔍 Side=LEFT, will search Old lines first")
+			searchNew = true
 		} else if issue.Side == "RIGHT" {
-			// RIGHT 表示评论在新版本（新增的代码），优先在新行中搜索
-			searchNew = true
-			searchOld = true // 如果新行找不到，再尝试旧行
-			log.Printf("🔍 Side=RIGHT, will search New lines first")
-		} else {
-			// 没有 Side 字段，使用默认策略：先新行后旧行
 			searchNew = true
 			searchOld = true
-			log.Printf("🔍 No Side specified, will search New lines first")
+		} else {
+			searchNew = true
+			searchOld = true
 		}
 
 		// 在新行中搜索
 		if searchNew && issue.Side != "LEFT" {
 			if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
-				actualLine := findLineNumberByPosition(fileLines.New, info.Position)
-				if actualLine != issue.NewLine && issue.NewLine > 0 {
-					log.Printf("⚠️ 行号修正: AI报告NewLine=%d, 实际NewLine=%d (代码片段定位)", issue.NewLine, actualLine)
-				} else {
-					log.Printf("✅ Matched by snippet in New lines, NewLine=%d, Position=%d", actualLine, info.Position)
-				}
 				return info, true
 			}
 		}
@@ -692,73 +673,50 @@ func resolveLineInfo(fileLines diffPositionLines, issue reviewIssue) (diffLineIn
 		// 在旧行中搜索
 		if searchOld && issue.Side != "RIGHT" {
 			if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
-				actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
-				if actualLine != issue.OldLine && issue.OldLine > 0 {
-					log.Printf("⚠️ 行号修正: AI报告OldLine=%d, 实际OldLine=%d (代码片段定位)", issue.OldLine, actualLine)
-				} else {
-					log.Printf("✅ Matched by snippet in Old lines, OldLine=%d, Position=%d", actualLine, info.Position)
-				}
 				return info, true
 			}
 		}
 
-		// 如果 Side 限制了搜索范围但没找到，尝试在另一侧搜索（可能是 AI 的 Side 标记错误）
+		// 如果 Side 限制了搜索范围但没找到，尝试在另一侧搜索
 		if issue.Side == "LEFT" && searchNew {
 			if info, ok := findBySnippet(fileLines.New, cleanCode); ok {
-				actualLine := findLineNumberByPosition(fileLines.New, info.Position)
-				log.Printf("⚠️ Side=LEFT but found in New lines! NewLine=%d, Position=%d", actualLine, info.Position)
 				return info, true
 			}
 		} else if issue.Side == "RIGHT" && searchOld {
 			if info, ok := findBySnippet(fileLines.Old, cleanCode); ok {
-				actualLine := findLineNumberByPosition(fileLines.Old, info.Position)
-				log.Printf("⚠️ Side=RIGHT but found in Old lines! OldLine=%d, Position=%d", actualLine, info.Position)
 				return info, true
 			}
 		}
 
-		log.Printf("❌ Code snippet not found: %q", cleanCode)
-		// 注意：代码片段未找到时，不fallback到行号匹配，直接返回失败
-		// 因为AI提供了代码但找不到，说明可能是错误的问题
 		return diffLineInfo{}, false
 	}
 
-	// 策略 2: 如果没有代码片段，尝试使用行号（但要谨慎）
-	log.Printf("⚠️ No code snippet provided, trying line number matching (less reliable)")
-
-	// 优先尝试 Side 字段匹配
+	// 策略 2: 如果没有代码片段，尝试使用行号
 	if issue.Side == "RIGHT" && issue.NewLine > 0 {
 		if info, ok := fileLines.New[issue.NewLine]; ok {
-			log.Printf("✅ Matched by Side=RIGHT, NewLine=%d, Position=%d", issue.NewLine, info.Position)
 			return info, true
 		}
-		log.Printf("⚠️ Side=RIGHT, NewLine=%d not in diff", issue.NewLine)
 	}
 
 	if issue.Side == "LEFT" && issue.OldLine > 0 {
 		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			log.Printf("✅ Matched by Side=LEFT, OldLine=%d, Position=%d", issue.OldLine, info.Position)
 			return info, true
 		}
-		log.Printf("⚠️ Side=LEFT, OldLine=%d not in diff", issue.OldLine)
 	}
 
 	// 直接行号匹配
 	if issue.NewLine > 0 {
 		if info, ok := fileLines.New[issue.NewLine]; ok {
-			log.Printf("✅ Matched by NewLine=%d, Position=%d", issue.NewLine, info.Position)
 			return info, true
 		}
 	}
 
 	if issue.OldLine > 0 {
 		if info, ok := fileLines.Old[issue.OldLine]; ok {
-			log.Printf("✅ Matched by OldLine=%d, Position=%d", issue.OldLine, info.Position)
 			return info, true
 		}
 	}
 
-	log.Printf("❌ Failed to resolve: OldLine=%d, NewLine=%d, Code=%q", issue.OldLine, issue.NewLine, cleanCode)
 	return diffLineInfo{}, false
 }
 
@@ -987,14 +945,131 @@ func truncateString(s string, maxLen int) string {
 }
 
 // isDuplicateComment 检查该行是否已有评论（用于去重）
-// 简化逻辑：只要同一文件的同一行已经有评论，就认为是重复
 func isDuplicateComment(existingComments []lib.Comment, filePath string, line int) bool {
 	for _, comment := range existingComments {
-		// 检查文件路径和行号是否匹配
 		if comment.Path == filePath && comment.Line == line {
-			log.Printf("🔍 Found existing comment on %s:%d", filePath, line)
 			return true
 		}
 	}
 	return false
+}
+
+// processWithAPI 使用 API 模式处理审查
+func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewContent string, diffText string, err error) {
+	// 获取 Diff
+	log.Printf("📄 [%s#%d] Fetching diff...", repo, prNum)
+	diffText, err = vcsClient.GetDiff(repo, prNum)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get diff: %w", err)
+	}
+	log.Printf("✅ [%s#%d] Diff fetched (%d bytes)", repo, prNum, len(diffText))
+
+	// 调用 AI 审查
+	log.Printf("🤖 [%s#%d] Calling AI API for review...", repo, prNum)
+	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
+	aiClient := lib.NewAIClient(apiURL, apiKey, model, systemPrompt, userTemplate)
+	reviewContent, err = aiClient.ReviewCode(diffText)
+	if err != nil {
+		log.Printf("❌ [%s#%d] AI API call failed: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("AI review failed: %w", err)
+	}
+
+	log.Printf("✅ [%s#%d] AI API review completed (output: %d bytes)", repo, prNum, len(reviewContent))
+	return reviewContent, diffText, nil
+}
+
+// processWithClaudeCLI 使用 Claude CLI 模式处理审查
+func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, token, providerType string) (reviewContent string, diffText string, err error) {
+	// 1. 获取分支信息
+	log.Printf("📋 [%s#%d] [Claude CLI Step 1/5] Fetching branch info...", repo, prNum)
+	branchInfo, err := vcsClient.GetBranchInfo(repo, prNum)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get branch info: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get branch info: %w", err)
+	}
+
+	log.Printf("🌿 [%s#%d] Branch: %s -> %s (SHA: %s)", repo, prNum, branchInfo.SourceBranch, branchInfo.TargetBranch, branchInfo.SourceSHA[:8])
+
+	// 2. 获取克隆 URL
+	log.Printf("🔗 [%s#%d] [Claude CLI Step 2/5] Getting clone URL...", repo, prNum)
+	cloneURL, err := vcsClient.GetCloneURL(repo)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get clone URL: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get clone URL: %w", err)
+	}
+
+	// 3. 构建带认证的克隆 URL
+	authenticatedURL, err := lib.BuildCloneURL(cloneURL, token, providerType)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to build authenticated clone URL: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to build clone URL: %w", err)
+	}
+
+	// 4. 克隆仓库
+	log.Printf("📦 [%s#%d] [Claude CLI Step 3/5] Cloning repository and checking out branch...", repo, prNum)
+	repoManager := lib.NewRepoManager(
+		appConfig.GetRepoCloneTempDir(),
+		appConfig.GetRepoCloneTimeout(),
+		appConfig.GetRepoCloneShallowClone(),
+		appConfig.GetRepoCloneShallowDepth(),
+	)
+
+	workDir, err := repoManager.CloneAndCheckout(authenticatedURL, *branchInfo)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to clone/checkout: %v (this will trigger fallback)", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to clone repository: %w", err)
+	}
+	log.Printf("✅ [%s#%d] Repository cloned to: %s", repo, prNum, workDir)
+
+	// 5. 清理工作目录（defer）
+	if appConfig.GetRepoCloneCleanupAfterReview() {
+		defer func() {
+			if cleanupErr := repoManager.Cleanup(workDir); cleanupErr != nil {
+				log.Printf("⚠️ [%s#%d] Cleanup failed: %v", repo, prNum, cleanupErr)
+			} else {
+				log.Printf("✅ [%s#%d] Work directory cleaned up", repo, prNum)
+			}
+		}()
+	}
+
+	// 6. 获取 diff（仍然需要 diff 用于行内评论）
+	log.Printf("📄 [%s#%d] [Claude CLI Step 4/5] Fetching diff for inline comments...", repo, prNum)
+	diffText, err = vcsClient.GetDiff(repo, prNum)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get diff: %w", err)
+	}
+
+	// 7. 使用 Claude CLI 审查
+	log.Printf("🤖 [%s#%d] [Claude CLI Step 5/5] Starting Claude CLI review with full project context...", repo, prNum)
+	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
+	_ = apiURL // 不使用，但需要接收
+	_ = apiKey // 不使用，但需要接收
+	_ = model  // 不使用，但需要接收
+
+	cliClient := lib.NewClaudeCLIClient(
+		appConfig.GetClaudeCLIBinaryPath(),
+		appConfig.GetClaudeCLIAllowedTools(),
+		appConfig.GetClaudeCLITimeout(),
+		appConfig.GetClaudeCLIMaxOutputLength(),
+		systemPrompt,
+		userTemplate,
+		appConfig.GetClaudeCLIAPIKey(),
+		appConfig.GetClaudeCLIAPIURL(),
+	)
+
+	result, err := cliClient.ReviewCodeInRepo(workDir, diffText)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Claude CLI execution error: %v (will trigger fallback)", repo, prNum, err)
+		return "", "", fmt.Errorf("Claude CLI review failed: %w", err)
+	}
+
+	if !result.Success {
+		log.Printf("❌ [%s#%d] Claude CLI returned unsuccessful result: %v (will trigger fallback)", repo, prNum, result.Error)
+		return "", "", fmt.Errorf("Claude CLI review unsuccessful: %v", result.Error)
+	}
+
+	log.Printf("✅ [%s#%d] Claude CLI review completed successfully (output: %d bytes)", repo, prNum, len(result.Content))
+	return result.Content, diffText, nil
 }
