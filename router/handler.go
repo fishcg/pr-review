@@ -1022,11 +1022,18 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 	}
 
 	// 7. 使用 Claude CLI 审查
+	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
+	_ = apiURL  // 不使用，但需要接收
+	_ = apiKey  // 不使用，但需要接收
+	_ = model   // 不使用，但需要接收
+
 	cliClient := lib.NewClaudeCLIClient(
 		appConfig.GetClaudeCLIBinaryPath(),
 		appConfig.GetClaudeCLIAllowedTools(),
 		appConfig.GetClaudeCLITimeout(),
 		appConfig.GetClaudeCLIMaxOutputLength(),
+		systemPrompt,
+		userTemplate,
 	)
 
 	result, err := cliClient.ReviewCodeInRepo(workDir, diffText)

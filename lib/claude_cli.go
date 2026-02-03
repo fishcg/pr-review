@@ -16,6 +16,8 @@ type ClaudeCLIClient struct {
 	AllowedTools    []string
 	Timeout         time.Duration
 	MaxOutputLength int
+	SystemPrompt    string
+	UserTemplate    string
 }
 
 // ReviewResult Claude CLI 审查结果
@@ -26,19 +28,22 @@ type ReviewResult struct {
 }
 
 // NewClaudeCLIClient 创建 Claude CLI 客户端
-func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int) *ClaudeCLIClient {
+func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate string) *ClaudeCLIClient {
 	return &ClaudeCLIClient{
 		BinaryPath:      binaryPath,
 		AllowedTools:    allowedTools,
 		Timeout:         time.Duration(timeout) * time.Second,
 		MaxOutputLength: maxOutputLength,
+		SystemPrompt:    systemPrompt,
+		UserTemplate:    userTemplate,
 	}
 }
 
 // ReviewCodeInRepo 在克隆的仓库目录中执行 Claude CLI 审查
 func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (*ReviewResult, error) {
 	// 1. 构建审查 prompt
-	reviewPrompt := fmt.Sprintf(`请对以下 PR/MR 的代码变更进行专业的代码审查。
+	// 添加 Claude CLI 工具使用说明
+	toolGuidance := `请对以下 PR/MR 的代码变更进行专业的代码审查。
 
 你可以：
 - 使用 Read 工具查看项目中的其他文件以理解上下文
@@ -48,36 +53,14 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 请基于整个项目的上下文进行审查，而不仅仅是 diff 本身。
 
-审查要点：
-  1. **逻辑错误与 Bug**：是否存在潜在的逻辑漏洞、边界条件处理不当或空指针风险？
-  2. **代码质量与可读性**：是否遵循 Clean Code 原则？变量命名是否清晰？函数是否过长？是否有冗余代码？
-  3. **性能优化**：是否存在不必要的循环、内存泄露或可以优化的算法复杂度？
-  4. **安全性**：是否存在常见的安全漏洞（如 SQL 注入、XSS、敏感信息泄露、不安全的加密等）？
-  5. **可测试性**：代码是否易于编写单元测试？是否实现了关注点分离？
-  6. **最佳实践**：是否符合该编程语言/框架的主流社区最佳实践？
-  7. **文档与注释**：是否有必要的注释和文档？注释是否准确反映代码意图？
+`
 
-请以以下格式输出审查结果（严格遵守格式,注意括号内容为说明，不要输出）：
+	// 组合：工具指导 + 系统 prompt + 用户 prompt
+	fullPrompt := toolGuidance + c.SystemPrompt + "\n\n"
 
-## 评分
-评分：X（满分 100，严重bug<60，有语法错误=0，轻微问题扣5-10分）
-
-## 修改点
-1. [简要描述主要修改]
-2. [简要描述主要修改]
-
-## 总结
-[一句话评价，是否建议合入（建议合入时打✅标记，否则打❌）]
-
-## 详细问题
-如果有具体问题，请使用表格格式：
-
-| 文件名 | 旧行号 | 新行号 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |
-|--------|--------|--------|----------|----------|------|----------|----------|
-
-代码变更 diff：
-%s
-`, diffContent)
+	// 替换用户模板中的 {diff} 占位符
+	userPrompt := strings.ReplaceAll(c.UserTemplate, "{diff}", diffContent)
+	reviewPrompt := fullPrompt + userPrompt
 
 	allowedToolsStr := strings.Join(c.AllowedTools, ",")
 
