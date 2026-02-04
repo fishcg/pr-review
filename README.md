@@ -2,6 +2,10 @@
 
 基于 AI 的自动代码审查服务，支持 GitHub Pull Request 和 GitLab Merge Request 自动审查。
 
+**在线演示**: [cr.acgay.com](http://cr.acgay.com)
+
+![审查效果示例](https://acgay.oss-cn-hangzhou.aliyuncs.com/ai/images/cr.png)
+
 ## 功能特性
 
 - ✅ 支持 GitHub 和 GitLab 双平台
@@ -55,7 +59,7 @@ cp config.yaml.example config.yaml
 # Review 模式: "api" 或 "claude_cli"
 review_mode: "api"  # 推荐先使用 api 模式测试
 
-# AI 服务配置
+# AI 服务配置（Open AI 接口兼容）
 ai_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 ai_api_key: "your-api-key"
 ai_model: "qwen-plus-latest"

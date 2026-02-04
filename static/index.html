@@ -15,7 +15,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.6;
             color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             min-height: 100vh;
         }
 
@@ -29,7 +29,10 @@
         header {
             text-align: center;
             padding: 60px 20px;
-            color: white;
+            background: white;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         .logo {
@@ -41,20 +44,22 @@
             font-size: 2.5rem;
             margin-bottom: 15px;
             font-weight: 700;
+            color: #222;
         }
 
         .subtitle {
             font-size: 1.2rem;
-            opacity: 0.9;
+            color: #666;
             margin-bottom: 30px;
         }
 
         .status {
             display: inline-block;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 8px 20px;
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
+            background: #f0f0f0;
+            padding: 10px 25px;
+            border-radius: 25px;
+            color: #555;
+            font-weight: 500;
         }
 
         .status-dot {
@@ -72,13 +77,114 @@
             50% { opacity: 0.5; }
         }
 
-        /* Main Content */
-        .main-content {
+        /* Tabs */
+        .tabs {
             background: white;
-            border-radius: 20px;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .tab-buttons {
+            display: flex;
+            border-bottom: 1px solid #e5e5e5;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 20px;
+            background: white;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-button:hover {
+            background: #fafafa;
+            color: #333;
+        }
+
+        .tab-button.active {
+            color: #222;
+            border-bottom-color: #333;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
             padding: 40px;
+            background: white;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             margin-bottom: 30px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Documentation Layout */
+        .doc-layout {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 40px;
+        }
+
+        .doc-sidebar {
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+
+        .doc-toc {
+            background: #fafafa;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #e5e5e5;
+        }
+
+        .doc-toc h3 {
+            font-size: 0.9rem;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            letter-spacing: 0.5px;
+        }
+
+        .doc-toc ul {
+            list-style: none;
+        }
+
+        .doc-toc li {
+            margin-bottom: 8px;
+        }
+
+        .doc-toc a {
+            color: #555;
+            text-decoration: none;
+            font-size: 0.95rem;
+            display: block;
+            padding: 6px 10px;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+        }
+
+        .doc-toc a:hover {
+            background: white;
+            color: #222;
+        }
+
+        .doc-toc a.active {
+            background: #333;
+            color: white;
+        }
+
+        .doc-content {
+            min-width: 0;
         }
 
         /* Features Grid */
@@ -90,15 +196,17 @@
         }
 
         .feature-card {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: #fafafa;
             padding: 30px;
             border-radius: 15px;
+            border: 1px solid #e5e5e5;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .feature-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-color: #d0d0d0;
         }
 
         .feature-icon {
@@ -107,7 +215,7 @@
         }
 
         .feature-card h3 {
-            color: #667eea;
+            color: #222;
             margin-bottom: 10px;
             font-size: 1.3rem;
         }
@@ -123,7 +231,7 @@
         }
 
         h2 {
-            color: #667eea;
+            color: #222;
             font-size: 2rem;
             margin-bottom: 25px;
             position: relative;
@@ -137,21 +245,100 @@
             left: 0;
             width: 60px;
             height: 4px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
+            background: #333;
             border-radius: 2px;
+        }
+
+        h3 {
+            color: #333;
+        }
+
+        /* Mode Comparison */
+        .mode-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .mode-card {
+            background: white;
+            border: 2px solid #e5e5e5;
+            border-radius: 15px;
+            padding: 30px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .mode-card:hover {
+            border-color: #999;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .mode-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .mode-badge.api {
+            background: #f0f0f0;
+            color: #555;
+        }
+
+        .mode-badge.cli {
+            background: #333;
+            color: white;
+        }
+
+        .mode-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #222;
+        }
+
+        .mode-card .description {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .mode-features {
+            list-style: none;
+            padding: 0;
+        }
+
+        .mode-features li {
+            padding: 8px 0;
+            color: #555;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .mode-features li:last-child {
+            border-bottom: none;
+        }
+
+        .mode-features li::before {
+            content: "✓ ";
+            color: #4ade80;
+            font-weight: bold;
+            margin-right: 8px;
         }
 
         /* API Documentation */
         .api-endpoint {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
+            background: #fafafa;
+            border-left: 4px solid #333;
             padding: 20px;
             margin: 20px 0;
             border-radius: 8px;
         }
 
         .api-endpoint h4 {
-            color: #667eea;
+            color: #222;
             margin-bottom: 10px;
             font-size: 1.1rem;
         }
@@ -171,7 +358,7 @@
         }
 
         .method.get {
-            background: #3b82f6;
+            background: #333;
             color: white;
         }
 
@@ -184,7 +371,7 @@
         }
 
         pre {
-            background: #1e293b;
+            background: #2a2a2a;
             color: #e2e8f0;
             padding: 20px;
             border-radius: 8px;
@@ -199,18 +386,18 @@
 
         /* Quick Start */
         .step {
-            background: #f0f4ff;
+            background: #fafafa;
             padding: 20px;
             margin: 15px 0;
             border-radius: 10px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #333;
         }
 
         .step-number {
             display: inline-block;
             width: 30px;
             height: 30px;
-            background: #667eea;
+            background: #333;
             color: white;
             text-align: center;
             line-height: 30px;
@@ -223,11 +410,14 @@
         footer {
             text-align: center;
             padding: 30px;
-            color: white;
+            color: #666;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         footer a {
-            color: white;
+            color: #333;
             text-decoration: underline;
         }
 
@@ -235,8 +425,8 @@
         .btn {
             display: inline-block;
             padding: 12px 30px;
-            background: white;
-            color: #667eea;
+            background: #333;
+            color: white;
             text-decoration: none;
             border-radius: 25px;
             font-weight: 600;
@@ -247,9 +437,34 @@
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            background: #222;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #333;
+            border: 2px solid #333;
+        }
+
+        .btn-secondary:hover {
+            background: #f5f5f5;
         }
 
         /* Responsive */
+        @media (max-width: 1024px) {
+            .doc-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .doc-sidebar {
+                position: static;
+            }
+
+            .doc-toc {
+                margin-bottom: 30px;
+            }
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2rem;
@@ -263,33 +478,41 @@
                 grid-template-columns: 1fr;
             }
 
-            .main-content {
+            .mode-comparison {
+                grid-template-columns: 1fr;
+            }
+
+            .tab-content {
                 padding: 25px;
+            }
+
+            .tab-button {
+                font-size: 1rem;
+                padding: 15px;
             }
         }
 
-        /* Highlight */
-        .highlight {
-            background: linear-gradient(120deg, #ffd89b 0%, #19547b 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
         .info-box {
-            background: #e0f2fe;
-            border-left: 4px solid #0284c7;
+            background: #f8f8f8;
+            border-left: 4px solid #888;
             padding: 15px;
             margin: 20px 0;
             border-radius: 6px;
         }
 
         .warning-box {
-            background: #fef3c7;
+            background: #fff8e1;
             border-left: 4px solid #f59e0b;
             padding: 15px;
             margin: 20px 0;
             border-radius: 6px;
+        }
+
+        .highlight {
+            background: #f5f5f5;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
         }
     </style>
 </head>
@@ -298,351 +521,514 @@
         <header>
             <div class="logo">🤖</div>
             <h1>AI Code Review</h1>
-            <p class="subtitle">基于 AI 的智能代码审查服务 | 支持 GitHub 和 GitLab</p>
+            <p class="subtitle">智能代码审查服务 | 支持 GitHub & GitLab | 双模式深度分析</p>
             <div class="status">
                 <span class="status-dot"></span>
                 快速构建您的 AI 代码审查工作流
             </div>
         </header>
 
-        <div class="main-content">
-            <!-- 产品介绍 -->
-            <section id="intro">
-                <h2>项目介绍</h2>
-                <p style="font-size: 1.1rem; color: #555; line-height: 1.8;">
-                    <strong>pr-review</strong> 是一个开源的 AI 代码审查工具，支持 <strong>GitHub Pull Request</strong> 和 <strong>GitLab Merge Request</strong>，
-                    能够自动分析代码变更，发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
-                </p>
-                <p style="font-size: 1.1rem; color: #555; line-height: 1.8; margin-top: 15px;">
-                    🎯 <strong>零成本构建你的 AI 代码审查 CI 流程</strong> - 支持私有部署，数据完全可控，
-                    可自定义 AI 模型和审查提示词，轻松集成到现有的开发工作流中。
-                </p>
-                <div style="margin-top: 25px;">
-                    <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">🌟 GitHub 仓库</a>
-                    <a href="https://github.com/fishcg/pr-review/releases" class="btn" target="_blank">📦 下载发布版</a>
-                </div>
-            </section>
+        <div class="tabs">
+            <div class="tab-buttons">
+                <button class="tab-button active" onclick="switchTab('intro')">产品介绍</button>
+                <button class="tab-button" onclick="switchTab('docs')">使用文档</button>
+            </div>
 
-            <!-- 核心功能 -->
-            <section id="features">
-                <h2>核心特性</h2>
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon">🌐</div>
-                        <h3>双平台支持</h3>
-                        <p>同时支持 GitHub 和 GitLab，可根据需求灵活切换或混合使用</p>
+            <!-- 产品介绍 Tab -->
+            <div id="intro-tab" class="tab-content active">
+                <!-- 产品介绍 -->
+                <section id="intro">
+                    <h2>产品介绍</h2>
+                    <p style="font-size: 1.1rem; color: #555; line-height: 1.8;">
+                        <strong>pr-review</strong> 是一个开源的 AI 代码审查工具，支持 <strong>GitHub Pull Request</strong> 和 <strong>GitLab Merge Request</strong>，
+                        提供 <strong>API 模式</strong> 和 <strong>Claude CLI 深度模式</strong> 两种审查方式，能够自动分析代码变更，
+                        发现潜在的 Bug、安全漏洞、性能问题和代码规范问题，并提供专业的改进建议。
+                    </p>
+                    <p style="font-size: 1.1rem; color: #555; line-height: 1.8; margin-top: 15px;">
+                        🎯 <strong>零成本构建你的 AI 代码审查 CI 流程</strong> - 支持私有部署，数据完全可控，
+                        可自定义 AI 模型和审查提示词，轻松集成到现有的开发工作流中。
+                    </p>
+                    <div style="margin-top: 25px;">
+                        <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">🌟 GitHub 仓库</a>
+                        <a href="https://github.com/fishcg/pr-review/releases" class="btn-secondary btn" target="_blank">📦 下载发布版</a>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🏠</div>
-                        <h3>私有部署</h3>
-                        <p>支持 Docker、Kubernetes 等多种部署方式，数据完全可控，支持私有 GitLab 实例</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔧</div>
-                        <h3>高度可定制</h3>
-                        <p>自定义 AI 模型、审查提示词、评分标准，打造专属的代码审查风格</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
-                        <h3>自动化触发</h3>
-                        <p>通过 Webhook 自动触发，PR/MR 有新提交时立即进行审查</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔍</div>
-                        <h3>智能分析</h3>
-                        <p>AI 深度分析代码变更，识别 Bug、安全漏洞、性能问题等多维度问题</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🪶</div>
-                        <h3>轻量高效</h3>
-                        <p>Go 编写，单二进制文件，资源占用极低（20MB 内存即可运行）</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📦</div>
-                        <h3>开源免费</h3>
-                        <p>MIT 协议，完全开源，可自由修改和商业使用</p>
-                    </div>
-                </div>
-            </section>
+                </section>
 
-            <!-- 快速开始 -->
-            <section id="quick-start">
-                <h2>快速部署</h2>
+                <!-- 双模式对比 -->
+                <section id="modes">
+                    <h2>双审查模式</h2>
+                    <p style="margin-bottom: 30px; color: #666; font-size: 1.05rem;">
+                        pr-review 提供两种审查模式，可根据需求灵活选择，Claude CLI 模式失败时自动降级到 API 模式
+                    </p>
 
-                <h3 style="color: #667eea; margin: 30px 0 15px 0; font-size: 1.3rem;">方式一：Docker 部署</h3>
+                    <div class="mode-comparison">
+                        <div class="mode-card">
+                            <span class="mode-badge api">API 模式</span>
+                            <h3>快速 Diff 审查</h3>
+                            <p class="description">
+                                基于 diff 的快速审查，适合日常 PR 的快速反馈，响应迅速，资源占用低
+                            </p>
+                            <ul class="mode-features">
+                                <li><strong>审查速度：</strong>5-15 秒</li>
+                                <li><strong>内存占用：</strong>20-50 MB</li>
+                                <li><strong>AI 模型：</strong>支持任意 OpenAI 兼容 API</li>
+                                <li><strong>审查范围：</strong>仅分析代码 diff</li>
+                                <li><strong>适用场景：</strong>快速迭代、日常 PR</li>
+                            </ul>
+                        </div>
 
-                <div class="step">
-                    <span class="step-number">1</span>
-                    <strong>克隆项目</strong>
+                        <div class="mode-card">
+                            <span class="mode-badge cli">Claude CLI 模式</span>
+                            <h3>深度上下文审查</h3>
+                            <p class="description">
+                                克隆完整仓库，基于项目全局上下文的深度审查，理解代码依赖关系，发现隐藏问题
+                            </p>
+                            <ul class="mode-features">
+                                <li><strong>审查速度：</strong>1-5 分钟</li>
+                                <li><strong>内存占用：</strong>100-500 MB</li>
+                                <li><strong>AI 模型：</strong>Claude（Anthropic API）</li>
+                                <li><strong>审查范围：</strong>完整项目上下文 + diff</li>
+                                <li><strong>适用场景：</strong>重要功能、架构变更</li>
+                                <li><strong>特色功能：</strong>可使用 Read、Glob、Grep 工具探索代码</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="info-box" style="margin-top: 30px;">
+                        <strong>💡 智能降级：</strong> Claude CLI 模式失败时（超时、网络错误等），系统会自动降级到 API 模式继续完成审查，确保服务稳定性
+                    </div>
+                </section>
+
+                <!-- 核心功能 -->
+                <section id="features">
+                    <h2>核心特性</h2>
+                    <div class="features">
+                        <div class="feature-card">
+                            <div class="feature-icon">🧠</div>
+                            <h3>双模式审查</h3>
+                            <p>支持 API 快速模式和 Claude CLI 深度模式，可配置切换，自动降级保障</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🌐</div>
+                            <h3>双平台支持</h3>
+                            <p>同时支持 GitHub 和 GitLab，可根据需求灵活切换或混合使用</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🏠</div>
+                            <h3>私有部署</h3>
+                            <p>支持 Docker、Kubernetes 等多种部署方式，数据完全可控，支持私有 GitLab 实例</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔧</div>
+                            <h3>高度可定制</h3>
+                            <p>自定义 AI 模型、审查提示词、评分标准，打造专属的代码审查风格</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">⚡</div>
+                            <h3>自动化触发</h3>
+                            <p>通过 Webhook 自动触发，PR/MR 有新提交时立即进行审查</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔍</div>
+                            <h3>智能分析</h3>
+                            <p>AI 深度分析代码变更，识别 Bug、安全漏洞、性能问题等多维度问题</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🪶</div>
+                            <h3>轻量高效</h3>
+                            <p>Go 编写，单二进制文件，API 模式资源占用极低（20MB 内存即可运行）</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📦</div>
+                            <h3>开源免费</h3>
+                            <p>MIT 协议，完全开源，可自由修改和商业使用</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 技术架构 -->
+                <section id="tech">
+                    <h2>技术栈</h2>
+                    <div class="features">
+                        <div class="feature-card">
+                            <div class="feature-icon">🔧</div>
+                            <h3>后端</h3>
+                            <p>Go 1.23+，零依赖标准库，编译后单一二进制文件</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🤖</div>
+                            <h3>AI 集成</h3>
+                            <p>API 模式支持 OpenAI、通义千问等，Claude CLI 模式使用 Anthropic Claude</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔌</div>
+                            <h3>API 集成</h3>
+                            <p>GitHub API、GitLab API 深度集成，统一接口抽象设计</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 使用场景 -->
+                <section id="use-cases">
+                    <h2>适用场景</h2>
+                    <div class="features">
+                        <div class="feature-card">
+                            <div class="feature-icon">🏢</div>
+                            <h3>企业团队</h3>
+                            <p>私有部署，数据安全可控，可定制审查标准</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">👥</div>
+                            <h3>开源项目</h3>
+                            <p>提高代码审查效率，保持代码质量一致性</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🎓</div>
+                            <h3>教学项目</h3>
+                            <p>自动化代码评审，帮助学生提高编码能力</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🛡️</div>
+                            <h3>安全审计</h3>
+                            <p>自动检测常见安全漏洞，提前发现风险</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">⚡</div>
+                            <h3>CI/CD 集成</h3>
+                            <p>无缝集成到现有 CI 流程，自动化审查</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔬</div>
+                            <h3>代码质量监控</h3>
+                            <p>持续跟踪代码质量，建立质量基线</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 审查报告示例 -->
+                <section id="example">
+                    <h2>审查报告</h2>
+                    <p style="margin-bottom: 20px;">AI 会在 PR/MR 中自动发布结构化的审查报告：</p>
+
+                    <div style="text-align: center; margin: 30px 0;">
+                        <img src="https://acgay.oss-cn-hangzhou.aliyuncs.com/ai/images/cr.png"
+                             alt="审查效果示例"
+                             style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);">
+                        <p style="margin-top: 15px; color: #888; font-size: 0.9rem;">审查效果示例</p>
+                    </div>
+
+                    <p style="margin: 30px 0 15px 0; font-weight: 600; color: #333;">报告包含以下内容：</p>
+                    <ul style="margin: 20px 0 20px 30px; line-height: 2;">
+                        <li>📊 <strong>代码质量评分</strong> - 100 分制，直观展示质量水平</li>
+                        <li>✅ <strong>做得好的地方</strong> - 值得肯定的代码实现</li>
+                        <li>⚠️ <strong>需要注意的问题</strong> - 严重问题和优化建议</li>
+                        <li>🔒 <strong>安全检查</strong> - SQL注入、XSS、敏感信息泄露等</li>
+                        <li>⚡ <strong>性能建议</strong> - 性能优化方向</li>
+                        <li>📝 <strong>代码规范</strong> - 命名、注释、格式等</li>
+                        <li>💡 <strong>总体建议</strong> - 改进方向总结</li>
+                    </ul>
+                    <div class="info-box" style="margin-top: 20px;">
+                        <strong>💡 自定义审查标准：</strong> 可在 config.yaml 中修改 system_prompt 和 user_prompt_template，
+                        定制符合团队规范的审查风格和输出格式
+                    </div>
+                </section>
+
+                <!-- 贡献指南 -->
+                <section id="contribute">
+                    <h2>参与贡献</h2>
+                    <p style="font-size: 1.1rem; line-height: 1.8; margin-bottom: 20px; color: #555;">
+                        pr-review 是一个开源项目，欢迎任何形式的贡献！
+                    </p>
+                    <div class="features">
+                        <div class="feature-card">
+                            <div class="feature-icon">🐛</div>
+                            <h3>报告问题</h3>
+                            <p>发现 Bug？在 GitHub Issues 提交问题报告</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">✨</div>
+                            <h3>提交 PR</h3>
+                            <p>修复 Bug、添加新功能，欢迎提交 Pull Request</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📖</div>
+                            <h3>完善文档</h3>
+                            <p>改进文档、添加示例，帮助更多人使用</p>
+                        </div>
+                    </div>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">⭐ Star on GitHub</a>
+                        <a href="https://github.com/fishcg/pr-review/fork" class="btn-secondary btn" target="_blank">🍴 Fork 项目</a>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 使用文档 Tab -->
+            <div id="docs-tab" class="tab-content">
+                <div class="doc-layout">
+                    <!-- 侧边栏目录 -->
+                    <aside class="doc-sidebar">
+                        <nav class="doc-toc">
+                            <h3>目录</h3>
+                            <ul>
+                                <li><a href="#doc-deploy" onclick="scrollToSection('doc-deploy', event)">快速部署</a></li>
+                                <li><a href="#doc-config" onclick="scrollToSection('doc-config', event)">配置说明</a></li>
+                                <li><a href="#doc-webhook" onclick="scrollToSection('doc-webhook', event)">Webhook 配置</a></li>
+                                <li><a href="#doc-api" onclick="scrollToSection('doc-api', event)">API 端点</a></li>
+                            </ul>
+                        </nav>
+                    </aside>
+
+                    <!-- 文档内容 -->
+                    <div class="doc-content">
+                        <!-- 快速部署 -->
+                        <section id="doc-deploy">
+                            <h2>快速部署</h2>
+
+                            <h3 style="color: #333; margin: 30px 0 15px 0; font-size: 1.3rem;">方式一：Docker 部署</h3>
+
+                            <div class="step">
+                                <span class="step-number">1</span>
+                                <strong>克隆项目</strong>
 <pre>git clone https://github.com/fishcg/pr-review.git
 cd pr-review</pre>
-                </div>
+                            </div>
 
-                <div class="step">
-                    <span class="step-number">2</span>
-                    <strong>配置服务</strong>
-                    <p style="margin-top: 10px;">复制配置模板并修改：</p>
+                            <div class="step">
+                                <span class="step-number">2</span>
+                                <strong>配置服务</strong>
+                                <p style="margin-top: 10px;">复制配置模板并修改：</p>
 <pre>cp config.yaml.example config.yaml
-# 编辑 config.yaml，填写：
-# - vcs_provider: github 或 gitlab（默认 github）
-# - github_token: GitHub Personal Access Token（GitHub 时必填）
-# - gitlab_token: GitLab Personal Access Token（GitLab 时必填）
-# - gitlab_base_url: GitLab 实例地址（可选，默认 gitlab.com）
-# - ai_api_url: AI 服务地址（支持 OpenAI 兼容接口）
-# - ai_api_key: AI API Key</pre>
-                </div>
+# 编辑 config.yaml，填写必要配置</pre>
+                            </div>
 
-                <div class="step">
-                    <span class="step-number">3</span>
-                    <strong>构建并运行</strong>
+                            <div class="step">
+                                <span class="step-number">3</span>
+                                <strong>构建并运行</strong>
 <pre>docker build -t pr-review .
 docker run -d -p 7995:7995 \
   -v $(pwd)/config.yaml:/app/config.yaml \
   pr-review</pre>
-                </div>
+                            </div>
 
-                <h3 style="color: #667eea; margin: 30px 0 15px 0; font-size: 1.3rem;">方式二：Kubernetes 部署</h3>
+                            <h3 style="color: #333; margin: 40px 0 15px 0; font-size: 1.3rem;">方式二：Kubernetes 部署</h3>
 
-                <div class="step">
-                    <span class="step-number">1</span>
-                    <strong>创建 ConfigMap</strong>
-                    <p style="margin-top: 10px;">将 config.yaml 内容添加到 k8s.yaml 的 ConfigMap 中</p>
-                </div>
+                            <div class="step">
+                                <span class="step-number">1</span>
+                                <strong>修改配置</strong>
+                                <p style="margin-top: 10px;">编辑 k8s.yaml 中的 ConfigMap，填写必要配置</p>
+                            </div>
 
-                <div class="step">
-                    <span class="step-number">2</span>
-                    <strong>部署到集群</strong>
+                            <div class="step">
+                                <span class="step-number">2</span>
+                                <strong>部署到集群</strong>
 <pre>kubectl apply -f k8s.yaml</pre>
-                </div>
+                            </div>
+                        </section>
 
-                <div class="step">
-                    <span class="step-number">3</span>
-                    <strong>配置 GitHub Webhook</strong>
-                    <p style="margin-top: 10px;">在仓库 Settings → Webhooks 中添加：</p>
-<pre>Payload URL: http://your-service-url/webhook
-Content type: application/json
-Events: Pull requests</pre>
-                </div>
+                        <!-- 配置说明 -->
+                        <section id="doc-config">
+                            <h2>配置说明</h2>
 
-                <div class="info-box">
-                    <strong>💡 提示：</strong> 详细配置说明请查看项目仓库中的 README.md 和 WEBHOOK_SETUP.md
-                </div>
-            </section>
+                            <div class="api-endpoint">
+                                <h4>🔧 基础配置</h4>
+<pre><code># VCS Provider（版本控制系统）
+vcs_provider: "github"  # 选择 github 或 gitlab
 
-            <!-- 配置说明 -->
-            <section id="config">
-                <h2>配置说明</h2>
+# 服务端口
+port: "7995"</code></pre>
+                            </div>
 
-                <p style="margin-bottom: 20px;">config.yaml 主要配置项：</p>
-
-                <div class="api-endpoint">
-                    <h4>🔀 VCS Provider 配置</h4>
-<pre><code>vcs_provider: "github"     # 选择 github 或 gitlab（默认 github）</code></pre>
-                </div>
-
-                <div class="api-endpoint">
-                    <h4>🔑 GitHub 配置</h4>
+                            <div class="api-endpoint">
+                                <h4>🔑 GitHub 配置</h4>
 <pre><code>github_token: "ghp_xxxxx"  # GitHub Personal Access Token
-                              # 需要 repo 权限用于读取 PR 和发布评论
+webhook_secret: ""         # Webhook 签名密钥（可选）</code></pre>
+                            </div>
 
-webhook_secret: ""         # Webhook 签名密钥（可选，建议配置）</code></pre>
-                </div>
-
-                <div class="api-endpoint">
-                    <h4>🦊 GitLab 配置</h4>
-<pre><code>gitlab_token: "glpat-xxxxx"  # GitLab Personal Access Token
-                                # 需要 api、read_api、write_repository 权限
-
+                            <div class="api-endpoint">
+                                <h4>🦊 GitLab 配置</h4>
+<pre><code>gitlab_token: "glpat-xxxxx"   # GitLab Personal Access Token
 gitlab_base_url: ""           # GitLab 实例地址（默认 gitlab.com）
-                                # 私有部署填写完整地址
+gitlab_webhook_token: ""      # Webhook Token（可选）</code></pre>
+                            </div>
 
-gitlab_webhook_token: ""      # Webhook Token（可选，建议配置）</code></pre>
-                </div>
+                            <div class="api-endpoint">
+                                <h4>🎯 审查模式配置</h4>
+<pre><code>review_mode: "api"  # 选择 "api" 或 "claude_cli"
 
-                <div class="api-endpoint">
-                    <h4>🤖 AI 服务配置</h4>
-<pre><code>ai_api_url: "http://your-ai-service/chat/completions"
-                              # 支持 OpenAI 兼容接口
+# API 模式配置
+ai_api_url: "http://your-ai-service/chat/completions"
+ai_api_key: "sk-xxxxx"
+ai_model: "qwen-max-latest"
 
-ai_api_key: "sk-xxxxx"     # AI API Key
+# Claude CLI 模式配置（仅当 review_mode: "claude_cli" 时需要）
+claude_cli:
+  binary_path: "claude"
+  allowed_tools: ["Read", "Glob", "Grep", "Bash"]
+  timeout: 600                    # 超时时间（秒）
+  max_output_length: 100000
+  api_key: "sk-ant-xxxxx"         # Anthropic API Key
+  api_url: ""                     # API 地址（可选）
+  model: ""                       # 模型（可选）
+  # 例如："anthropic/claude-sonnet-4.5"
 
-ai_model: "qwen-max-latest" # 模型名称
-                              # 支持：qwen-max、gpt-4、claude 等</code></pre>
-                </div>
+# 仓库克隆配置（仅 Claude CLI 模式需要）
+repo_clone:
+  temp_dir: "/tmp/pr-review-repos"
+  clone_timeout: 180              # 克隆超时（秒）
+  shallow_clone: true             # 浅克隆
+  shallow_depth: 100
+  cleanup_after_review: true      # 审查后清理</code></pre>
+                            </div>
 
-                <div class="api-endpoint">
-                    <h4>📝 审查提示词（可自定义）</h4>
-<pre><code>system_prompt: |          # 定义 AI 角色和行为
+                            <div class="api-endpoint">
+                                <h4>📝 审查提示词（可自定义）</h4>
+<pre><code>system_prompt: |
   你是一个资深的代码审查专家...
 
-user_prompt_template: |   # 审查请求模板
-  请对以下代码变更进行审查...
-  {diff}                  # 代码差异占位符</code></pre>
-                </div>
+user_prompt_template: |
+  审查以下代码变更...
+  {diff}  # 代码差异占位符</code></pre>
+                            </div>
 
-                <div class="info-box">
-                    <strong>💡 提示：</strong> 完整配置示例见 <code>config.yaml.example</code>，可根据团队需求自定义审查标准和输出格式
-                </div>
-            </section>
+                            <div class="info-box">
+                                <strong>💡 配置优先级：</strong>
+                                <ul style="margin-top: 10px; margin-left: 20px;">
+                                    <li>Claude CLI 环境变量：配置文件 > 环境变量 > Claude CLI 全局配置</li>
+                                    <li>环境变量名：<code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_MODEL</code></li>
+                                </ul>
+                            </div>
+                        </section>
 
-            <!-- API 端点 -->
-            <section id="api">
-                <h2>API 端点</h2>
+                        <!-- Webhook 配置 -->
+                        <section id="doc-webhook">
+                            <h2>Webhook 配置</h2>
 
-                <div class="api-endpoint">
-                    <h4>
-                        <span class="method post">POST</span>
-                        <span class="endpoint-path">/webhook</span>
-                    </h4>
-                    <p><strong>说明：</strong>接收 GitHub/GitLab Webhook 事件</p>
-                    <p><strong>触发时机：</strong>PR/MR 创建、更新、重新打开</p>
-                </div>
+                            <h3 style="color: #333; margin: 20px 0 10px 0; font-size: 1.2rem;">GitHub Webhook</h3>
+                            <p style="margin-bottom: 15px; color: #666;">在仓库 Settings → Webhooks 中添加：</p>
+<pre>Payload URL: http://your-service-url/webhook
+Content type: application/json
+Secret: (填写 config.yaml 中的 webhook_secret)
+Events: 选择 "Pull requests"</pre>
 
-                <div class="api-endpoint">
-                    <h4>
-                        <span class="method post">POST</span>
-                        <span class="endpoint-path">/review</span>
-                    </h4>
-                    <p><strong>说明：</strong>手动触发 PR/MR 审查</p>
-                    <p><strong>GitHub 请求体：</strong></p>
+                            <h3 style="color: #333; margin: 30px 0 10px 0; font-size: 1.2rem;">GitLab Webhook</h3>
+                            <p style="margin-bottom: 15px; color: #666;">在项目 Settings → Webhooks 中添加：</p>
+<pre>URL: http://your-service-url/webhook
+Secret Token: (填写 config.yaml 中的 gitlab_webhook_token)
+Trigger: 选择 "Merge request events"</pre>
+                        </section>
+
+                        <!-- API 端点 -->
+                        <section id="doc-api">
+                            <h2>API 端点</h2>
+
+                            <div class="api-endpoint">
+                                <h4>
+                                    <span class="method post">POST</span>
+                                    <span class="endpoint-path">/webhook</span>
+                                </h4>
+                                <p><strong>说明：</strong>接收 GitHub/GitLab Webhook 事件</p>
+                                <p><strong>触发时机：</strong>PR/MR 创建、更新、重新打开</p>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h4>
+                                    <span class="method post">POST</span>
+                                    <span class="endpoint-path">/review</span>
+                                </h4>
+                                <p><strong>说明：</strong>手动触发 PR/MR 审查</p>
+                                <p><strong>请求体：</strong></p>
 <pre><code>{
-  "repo": "owner/repository",
+  "repo": "owner/repository",  // GitHub: owner/repo, GitLab: group/project
   "pr_number": 123,
-  "provider": "github"
+  "provider": "github"         // 可选，默认使用配置文件中的 vcs_provider
 }</code></pre>
-                    <p><strong>GitLab 请求体：</strong></p>
-<pre><code>{
-  "repo": "group/project",
-  "pr_number": 45,
-  "provider": "gitlab"
-}</code></pre>
-                    <p style="margin-top: 10px;"><em>注：provider 可选，未指定时使用配置文件中的 vcs_provider</em></p>
-                </div>
+                            </div>
 
-                <div class="api-endpoint">
-                    <h4>
-                        <span class="method get">GET</span>
-                        <span class="endpoint-path">/health</span>
-                    </h4>
-                    <p><strong>说明：</strong>健康检查</p>
-                </div>
-            </section>
-
-            <!-- 技术架构 -->
-            <section id="tech">
-                <h2>技术栈</h2>
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon">🔧</div>
-                        <h3>后端</h3>
-                        <p>Go 1.23+，零依赖标准库，编译后单一二进制文件</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🤖</div>
-                        <h3>AI 集成</h3>
-                        <p>支持 OpenAI、通义千问、Claude 等 OpenAI 兼容接口，灵活配置</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔌</div>
-                        <h3>API 集成</h3>
-                        <p>GitHub API、GitLab API 深度集成，统一接口抽象设计</p>
+                            <div class="api-endpoint">
+                                <h4>
+                                    <span class="method get">GET</span>
+                                    <span class="endpoint-path">/health</span>
+                                </h4>
+                                <p><strong>说明：</strong>健康检查</p>
+                            </div>
+                        </section>
                     </div>
                 </div>
-            </section>
-
-            <!-- 使用场景 -->
-            <section id="use-cases">
-                <h2>适用场景</h2>
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon">🏢</div>
-                        <h3>企业团队</h3>
-                        <p>私有部署，数据安全可控，可定制审查标准</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">👥</div>
-                        <h3>开源项目</h3>
-                        <p>提高代码审查效率，保持代码质量一致性</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🎓</div>
-                        <h3>教学项目</h3>
-                        <p>自动化代码评审，帮助学生提高编码能力</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🛡️</div>
-                        <h3>安全审计</h3>
-                        <p>自动检测常见安全漏洞，提前发现风险</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
-                        <h3>CI/CD 集成</h3>
-                        <p>无缝集成到现有 CI 流程，自动化审查</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔬</div>
-                        <h3>代码质量监控</h3>
-                        <p>持续跟踪代码质量，建立质量基线</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 示例输出 -->
-            <section id="example">
-                <h2>审查报告</h2>
-                <p style="margin-bottom: 15px;">AI 会在 PR 中自动发布结构化的审查报告：</p>
-                <ul style="margin: 20px 0 20px 30px; line-height: 2;">
-                    <li>📊 <strong>代码质量评分</strong> - 100 分制，直观展示质量水平</li>
-                    <li>✅ <strong>做得好的地方</strong> - 值得肯定的代码实现</li>
-                    <li>⚠️ <strong>需要注意的问题</strong> - 严重问题和优化建议</li>
-                    <li>🔒 <strong>安全检查</strong> - SQL注入、XSS、敏感信息泄露等</li>
-                    <li>⚡ <strong>性能建议</strong> - 性能优化方向</li>
-                    <li>📝 <strong>代码规范</strong> - 命名、注释、格式等</li>
-                    <li>💡 <strong>总体建议</strong> - 改进方向总结</li>
-                </ul>
-                <div class="info-box" style="margin-top: 20px;">
-                    <strong>💡 自定义审查标准：</strong> 可在 config.yaml 中修改 system_prompt 和 user_prompt_template，
-                    定制符合团队规范的审查风格和输出格式
-                </div>
-            </section>
-
-            <!-- 贡献指南 -->
-            <section id="contribute">
-                <h2>参与贡献</h2>
-                <p style="font-size: 1.1rem; line-height: 1.8; margin-bottom: 20px;">
-                    pr-review 是一个开源项目，欢迎任何形式的贡献！
-                </p>
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon">🐛</div>
-                        <h3>报告问题</h3>
-                        <p>发现 Bug？在 GitHub Issues 提交问题报告</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">✨</div>
-                        <h3>提交 PR</h3>
-                        <p>修复 Bug、添加新功能，欢迎提交 Pull Request</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📖</div>
-                        <h3>完善文档</h3>
-                        <p>改进文档、添加示例，帮助更多人使用</p>
-                    </div>
-                </div>
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="https://github.com/fishcg/pr-review" class="btn" target="_blank">⭐ Star on GitHub</a>
-                    <a href="https://github.com/fishcg/pr-review/fork" class="btn" target="_blank">🍴 Fork 项目</a>
-                </div>
-            </section>
+            </div>
         </div>
 
         <footer>
-            <p>Powered by AI</p>
-            <p style="margin-top: 10px; opacity: 0.8; font-size: 0.9rem;">
+            <p style="color: #333; font-weight: 600;">Powered by fishcg</p>
+            <p style="margin-top: 10px; color: #666; font-size: 0.9rem;">
                 如有问题，请联系管理员 |
-                <a href="https://github.com/fishcg/pr-review/issues/new" target="_blank">GitHub</a>
+                <a href="https://github.com/fishcg/pr-review/issues/new" target="_blank">GitHub Issues</a>
             </p>
         </footer>
     </div>
+
+    <script>
+        // 切换 Tab
+        function switchTab(tabName) {
+            // 隐藏所有 tab 内容
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // 移除所有按钮的 active 状态
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            // 显示选中的 tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // 激活选中的按钮
+            event.target.classList.add('active');
+        }
+
+        // 滚动到指定章节
+        function scrollToSection(sectionId, event) {
+            event.preventDefault();
+
+            // 更新目录激活状态
+            document.querySelectorAll('.doc-toc a').forEach(link => {
+                link.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 滚动到目标位置
+            const section = document.getElementById(sectionId);
+            if (section) {
+                const offset = 20; // 顶部偏移量
+                const elementPosition = section.getBoundingClientRect().top;
+                const offsetPosition = elementPosition + window.pageYOffset - offset;
+
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        // 监听滚动事件，自动更新目录激活状态
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('.doc-content section');
+            const scrollPos = window.pageYOffset + 100;
+
+            sections.forEach(section => {
+                const top = section.offsetTop;
+                const height = section.offsetHeight;
+                const id = section.getAttribute('id');
+
+                if (scrollPos >= top && scrollPos < top + height) {
+                    document.querySelectorAll('.doc-toc a').forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === '#' + id) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        });
+    </script>
 </body>
 </html>
