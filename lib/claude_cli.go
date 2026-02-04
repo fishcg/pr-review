@@ -58,7 +58,7 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 - 使用 Grep 工具搜索代码
 - 使用 Bash 工具执行 git 命令
 
-必须基于整个项目的上下文进行审查，而不仅仅是 diff 本身。
+必须基于整个项目的上下文进行审查，判断修改的代码是否影响其他地方，而不仅仅是 diff 本身。
 
 `
 
