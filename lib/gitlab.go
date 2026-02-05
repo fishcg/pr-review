@@ -19,14 +19,27 @@ type GitLabClient struct {
 	HTTPClient *http.Client
 }
 
-// MRInfo MR 基本信息
-type MRInfo struct {
+// gitlabMRResponse GitLab MR 响应结构
+type gitlabMRResponse struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	State       string `json:"state"`
+	Draft       bool   `json:"draft"`
+	WorkInProgress bool `json:"work_in_progress"`
+	Author      struct {
+		Username string `json:"username"`
+	} `json:"author"`
 	SHA      string `json:"sha"`
 	DiffRefs struct {
 		BaseSHA  string `json:"base_sha"`
 		HeadSHA  string `json:"head_sha"`
 		StartSHA string `json:"start_sha"`
 	} `json:"diff_refs"`
+	SourceBranch string `json:"source_branch"`
+	TargetBranch string `json:"target_branch"`
+	Labels       []string `json:"labels"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 // MRChanges MR 变更信息
@@ -92,37 +105,47 @@ func (c *GitLabClient) GetDiff(repo string, mrNum int) (string, error) {
 	return diffText, nil
 }
 
-// GetHeadSHA 获取 MR 的最新 commit SHA
-func (c *GitLabClient) GetHeadSHA(repo string, mrNum int) (string, error) {
+// getMRResponse 获取 GitLab MR 响应（内部方法）
+func (c *GitLabClient) getMRResponse(repo string, mrNum int) (*gitlabMRResponse, error) {
 	encodedRepo := url.PathEscape(repo)
 	infoURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d", c.BaseURL, encodedRepo, mrNum)
 
 	req, err := http.NewRequest("GET", infoURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to get MR info: %w", err)
+		return nil, fmt.Errorf("failed to get MR info: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
 	}
 
-	var mrInfo MRInfo
-	if err := json.NewDecoder(resp.Body).Decode(&mrInfo); err != nil {
-		return "", fmt.Errorf("failed to decode MR info: %w", err)
+	var mrResp gitlabMRResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mrResp); err != nil {
+		return nil, fmt.Errorf("failed to decode MR info: %w", err)
 	}
 
-	headSHA := mrInfo.SHA
-	if headSHA == "" && mrInfo.DiffRefs.HeadSHA != "" {
-		headSHA = mrInfo.DiffRefs.HeadSHA
+	return &mrResp, nil
+}
+
+// GetHeadSHA 获取 MR 的最新 commit SHA
+func (c *GitLabClient) GetHeadSHA(repo string, mrNum int) (string, error) {
+	mrResp, err := c.getMRResponse(repo, mrNum)
+	if err != nil {
+		return "", err
+	}
+
+	headSHA := mrResp.SHA
+	if headSHA == "" && mrResp.DiffRefs.HeadSHA != "" {
+		headSHA = mrResp.DiffRefs.HeadSHA
 	}
 
 	if headSHA == "" {
@@ -130,6 +153,29 @@ func (c *GitLabClient) GetHeadSHA(repo string, mrNum int) (string, error) {
 	}
 
 	return headSHA, nil
+}
+
+// GetPRInfo 获取 MR 的详细信息
+func (c *GitLabClient) GetPRInfo(repo string, mrNum int) (*PRInfo, error) {
+	mrResp, err := c.getMRResponse(repo, mrNum)
+	if err != nil {
+		return nil, err
+	}
+
+	// GitLab 的 draft 状态可能通过 draft 字段或 work_in_progress 字段表示
+	isDraft := mrResp.Draft || mrResp.WorkInProgress
+
+	return &PRInfo{
+		Title:        mrResp.Title,
+		Description:  mrResp.Description,
+		Author:       mrResp.Author.Username,
+		SourceBranch: mrResp.SourceBranch,
+		TargetBranch: mrResp.TargetBranch,
+		Labels:       mrResp.Labels,
+		IsDraft:      isDraft,
+		CreatedAt:    mrResp.CreatedAt,
+		UpdatedAt:    mrResp.UpdatedAt,
+	}, nil
 }
 
 // PostComment 向 MR 发布评论
@@ -176,7 +222,7 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 
 	// GitLab 使用 discussions API 来发布行内评论
 	// 需要获取 MR 信息来构建 position 对象
-	mrInfo, err := c.getMRInfo(repo, mrNum)
+	mrResp, err := c.getMRResponse(repo, mrNum)
 	if err != nil {
 		return fmt.Errorf("failed to get MR info for inline comment: %w", err)
 	}
@@ -185,9 +231,9 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 
 	// 构建 position 对象
 	positionObj := map[string]interface{}{
-		"base_sha":      mrInfo.DiffRefs.BaseSHA,
-		"head_sha":      mrInfo.DiffRefs.HeadSHA,
-		"start_sha":     mrInfo.DiffRefs.StartSHA,
+		"base_sha":      mrResp.DiffRefs.BaseSHA,
+		"head_sha":      mrResp.DiffRefs.HeadSHA,
+		"start_sha":     mrResp.DiffRefs.StartSHA,
 		"position_type": "text",
 		"new_path":      path,
 		"old_path":      path,
@@ -483,37 +529,6 @@ func (c *GitLabClient) GetProviderType() string {
 }
 
 // === 辅助方法 ===
-
-// getMRInfo 获取 MR 完整信息（包括 diff_refs）
-func (c *GitLabClient) getMRInfo(repo string, mrNum int) (*MRInfo, error) {
-	encodedRepo := url.PathEscape(repo)
-	infoURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d", c.BaseURL, encodedRepo, mrNum)
-
-	req, err := http.NewRequest("GET", infoURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("PRIVATE-TOKEN", c.Token)
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get MR info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
-	var mrInfo MRInfo
-	if err := json.NewDecoder(resp.Body).Decode(&mrInfo); err != nil {
-		return nil, fmt.Errorf("failed to decode MR info: %w", err)
-	}
-
-	return &mrInfo, nil
-}
 
 // buildUnifiedDiff 将 GitLab changes 数组转换为 unified diff 格式
 func (c *GitLabClient) buildUnifiedDiff(changes []struct {

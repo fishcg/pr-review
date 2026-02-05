@@ -24,7 +24,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     && apk add --no-cache git ca-certificates
 
 # 安装 Claude CLI
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code && printf '{\n  "hasCompletedOnboarding": true,\n  "preferredLoginMethod": "console"\n}\n' > /root/.claude.json
 
 # 复制二进制文件
 COPY --from=builder /app/pr-review-service .

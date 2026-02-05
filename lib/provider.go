@@ -12,6 +12,19 @@ type Comment struct {
 	UserLogin string // 用户登录名
 }
 
+// PRInfo PR/MR 的详细信息
+type PRInfo struct {
+	Title        string
+	Description  string
+	Author       string
+	SourceBranch string
+	TargetBranch string
+	Labels       []string
+	IsDraft      bool
+	CreatedAt    string
+	UpdatedAt    string
+}
+
 // VCSProvider 定义版本控制系统提供商的统一接口
 type VCSProvider interface {
 	// GetDiff 获取 Pull/Merge Request 的代码变更
@@ -19,6 +32,9 @@ type VCSProvider interface {
 
 	// GetHeadSHA 获取 PR/MR 的最新 commit SHA
 	GetHeadSHA(repo string, number int) (string, error)
+
+	// GetPRInfo 获取 PR/MR 的详细信息
+	GetPRInfo(repo string, number int) (*PRInfo, error)
 
 	// PostComment 发布普通评论到 PR/MR
 	PostComment(repo string, number int, comment string) error

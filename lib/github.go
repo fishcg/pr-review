@@ -16,11 +16,27 @@ type GitHubClient struct {
 	HTTPClient *http.Client
 }
 
-// PRInfo PR 基本信息
-type PRInfo struct {
+// githubPRResponse GitHub PR 响应结构
+type githubPRResponse struct {
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+	State  string `json:"state"`
+	Draft  bool   `json:"draft"`
+	User   struct {
+		Login string `json:"login"`
+	} `json:"user"`
 	Head struct {
 		SHA string `json:"sha"`
+		Ref string `json:"ref"`
 	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // NewGitHubClient 创建 GitHub 客户端
@@ -69,13 +85,13 @@ func (c *GitHubClient) GetPRDiff(repo string, prNum int) (string, error) {
 	return diffText, nil
 }
 
-// GetPRHeadSHA 获取 PR 的最新 commit SHA
-func (c *GitHubClient) GetPRHeadSHA(repo string, prNum int) (string, error) {
+// getPRResponse 获取 GitHub PR 响应（内部方法）
+func (c *GitHubClient) getPRResponse(repo string, prNum int) (*githubPRResponse, error) {
 	infoURL := fmt.Sprintf("https://api.github.com/repos/%s/pulls/%d", repo, prNum)
 
 	req, err := http.NewRequest("GET", infoURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.Token)
@@ -83,24 +99,60 @@ func (c *GitHubClient) GetPRHeadSHA(repo string, prNum int) (string, error) {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to get PR info: %w", err)
+		return nil, fmt.Errorf("failed to get PR info: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("GitHub API error: %s", resp.Status)
+		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
 	}
 
-	var prInfo PRInfo
-	if err := json.NewDecoder(resp.Body).Decode(&prInfo); err != nil {
-		return "", fmt.Errorf("failed to decode PR info: %w", err)
+	var prResp githubPRResponse
+	if err := json.NewDecoder(resp.Body).Decode(&prResp); err != nil {
+		return nil, fmt.Errorf("failed to decode PR info: %w", err)
 	}
 
-	if prInfo.Head.SHA == "" {
+	return &prResp, nil
+}
+
+// GetPRHeadSHA 获取 PR 的最新 commit SHA
+func (c *GitHubClient) GetPRHeadSHA(repo string, prNum int) (string, error) {
+	prResp, err := c.getPRResponse(repo, prNum)
+	if err != nil {
+		return "", err
+	}
+
+	if prResp.Head.SHA == "" {
 		return "", fmt.Errorf("PR head sha is empty")
 	}
 
-	return prInfo.Head.SHA, nil
+	return prResp.Head.SHA, nil
+}
+
+// GetPRInfo 获取 PR 的详细信息
+func (c *GitHubClient) GetPRInfo(repo string, prNum int) (*PRInfo, error) {
+	prResp, err := c.getPRResponse(repo, prNum)
+	if err != nil {
+		return nil, err
+	}
+
+	// 提取标签
+	labels := make([]string, 0, len(prResp.Labels))
+	for _, label := range prResp.Labels {
+		labels = append(labels, label.Name)
+	}
+
+	return &PRInfo{
+		Title:        prResp.Title,
+		Description:  prResp.Body,
+		Author:       prResp.User.Login,
+		SourceBranch: prResp.Head.Ref,
+		TargetBranch: prResp.Base.Ref,
+		Labels:       labels,
+		IsDraft:      prResp.Draft,
+		CreatedAt:    prResp.CreatedAt,
+		UpdatedAt:    prResp.UpdatedAt,
+	}, nil
 }
 
 // PostComment 向 PR 发布评论
