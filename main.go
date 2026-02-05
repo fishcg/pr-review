@@ -77,7 +77,6 @@ func startCleanupTask() {
 		log.Printf("🧹 Cleanup task started (runs every 1 hour)")
 
 		for range ticker.C {
-			log.Printf("🧹 Running scheduled cleanup task...")
 			// 清理超过 24 小时的仓库
 			if err := repoManager.CleanupOldRepos(24 * time.Hour); err != nil {
 				log.Printf("⚠️ Cleanup task failed: %v", err)

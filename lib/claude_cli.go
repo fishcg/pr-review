@@ -83,24 +83,6 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 		"--allowedTools", allowedToolsStr,
 	}
 
-	log.Printf("🤖 Starting Claude CLI review...")
-	log.Printf("   Timeout: %v", c.Timeout)
-	if c.APIKey != "" {
-		log.Printf("   Claude API Key: configured (from config file)")
-	} else {
-		log.Printf("   Claude API Key: using environment variable or global config")
-	}
-	if c.APIURL != "" {
-		log.Printf("   Claude API URL: %s (from config file)", c.APIURL)
-	} else {
-		log.Printf("   Claude API URL: using default or environment variable")
-	}
-	if c.Model != "" {
-		log.Printf("   Claude Model: %s (from config file)", c.Model)
-	} else {
-		log.Printf("   Claude Model: using default or environment variable")
-	}
-
 	// 2. 创建执行上下文（带超时）
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
@@ -120,9 +102,7 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	startTime := time.Now()
 	err := cmd.Run()
-	duration := time.Since(startTime)
 
 	// 5. 处理结果
 	stderrStr := stderr.String()
@@ -178,8 +158,6 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 		output = output[:c.MaxOutputLength] + "\n\n...(output truncated)"
 	}
 
-	log.Printf("✅ Claude CLI review completed in %.1fs", duration.Seconds())
-
 	return &ReviewResult{
 		Content: output,
 		Success: true,
@@ -232,6 +210,5 @@ func (c *ClaudeCLIClient) CheckCLIAvailable() error {
 	}
 
 	version := strings.TrimSpace(stdout.String())
-	log.Printf("✅ Claude CLI available: %s", version)
 	return nil
 }

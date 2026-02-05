@@ -58,11 +58,9 @@ func HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// 3. 解析事件类型
 	eventType := r.Header.Get("X-Gitlab-Event")
-	log.Printf("📨 Received GitLab webhook: %s", eventType)
 
 	// 4. 只处理 Merge Request 相关事件
 	if eventType != "Merge Request Hook" {
-		log.Printf("⏭️  Ignoring event type: %s", eventType)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Event ignored"))
 		return
@@ -78,7 +76,6 @@ func HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// 6. 验证 object_kind
 	if payload.ObjectKind != "merge_request" {
-		log.Printf("⏭️  Ignoring object kind: %s", payload.ObjectKind)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(fmt.Sprintf("Object kind '%s' ignored", payload.ObjectKind)))
 		return
@@ -91,7 +88,6 @@ func HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
 		payload.ObjectAttributes.Action == "reopen"
 
 	if !shouldReview {
-		log.Printf("⏭️  Ignoring MR action: %s", payload.ObjectAttributes.Action)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(fmt.Sprintf("Action '%s' ignored", payload.ObjectAttributes.Action)))
 		return

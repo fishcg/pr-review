@@ -88,7 +88,6 @@ func (c *AIClient) ReviewCode(diffText string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	log.Printf("Sending AI request to: %s", c.APIUrl)
 	startTime := time.Now()
 
 	resp, err := c.HTTPClient.Do(req)
@@ -99,7 +98,6 @@ func (c *AIClient) ReviewCode(diffText string) (string, error) {
 	defer resp.Body.Close()
 
 	elapsed := time.Since(startTime)
-	log.Printf("AI service responded in %v with status: %d", elapsed, resp.StatusCode)
 
 	aiBody, err := io.ReadAll(resp.Body)
 	if err != nil {

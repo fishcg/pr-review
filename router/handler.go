@@ -135,8 +135,6 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 	// === B. 根据 ReviewMode 选择处理策略 ===
 	reviewMode := appConfig.GetReviewMode()
-	log.Printf("🚀 [%s#%d] Starting review (mode: %s, provider: %s)", repo, prNum, reviewMode, vcsClient.GetProviderType())
-
 	var reviewContent string
 	var diffText string
 	var err error
@@ -156,7 +154,6 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 				log.Printf("💥 [%s#%d] Review completely failed - both Claude CLI and API modes unsuccessful", repo, prNum)
 				return
 			}
-			log.Printf("✅ [%s#%d] Successfully fell back to API mode", repo, prNum)
 		}
 	} else {
 		// API 模式
@@ -960,10 +957,8 @@ func isDuplicateComment(existingComments []lib.Comment, filePath string, line in
 // processWithAPI 使用 API 模式处理审查
 func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewContent string, diffText string, err error) {
 	// 1. 获取 PR 详细信息
-	log.Printf("📋 [%s#%d] Fetching PR info...", repo, prNum)
 	prInfo, err := vcsClient.GetPRInfo(repo, prNum)
 	if err != nil {
-		log.Printf("⚠️ [%s#%d] Failed to get PR info (continuing with basic review): %v", repo, prNum, err)
 		prInfo = &lib.PRInfo{
 			Title:  fmt.Sprintf("PR #%d", prNum),
 			Author: "unknown",
@@ -971,13 +966,11 @@ func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewCo
 	}
 
 	// 2. 获取 Diff
-	log.Printf("📄 [%s#%d] Fetching diff...", repo, prNum)
 	diffText, err = vcsClient.GetDiff(repo, prNum)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get diff: %w", err)
 	}
-	log.Printf("✅ [%s#%d] Diff fetched (%d bytes)", repo, prNum, len(diffText))
 
 	// 3. 增强 diff（添加 PR 上下文信息）
 	enhancer := lib.NewDiffEnhancer(lib.PRContextInfo{
@@ -992,10 +985,9 @@ func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewCo
 		UpdatedAt:    prInfo.UpdatedAt,
 	}, diffText)
 	enhancedDiff := enhancer.EnhanceDiff(diffText)
-	log.Printf("✅ [%s#%d] Diff enhanced with PR context (%d bytes)", repo, prNum, len(enhancedDiff))
 
 	// 4. 调用 AI 审查（使用增强后的 diff）
-	log.Printf("🤖 [%s#%d] Calling AI API for review...", repo, prNum)
+	log.Printf("🤖 [%s#%d] Starting AI review...", repo, prNum)
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
 	aiClient := lib.NewAIClient(apiURL, apiKey, model, systemPrompt, userTemplate)
 	reviewContent, err = aiClient.ReviewCode(enhancedDiff)
@@ -1004,50 +996,43 @@ func processWithAPI(vcsClient lib.VCSProvider, repo string, prNum int) (reviewCo
 		return "", "", fmt.Errorf("AI review failed: %w", err)
 	}
 
-	log.Printf("✅ [%s#%d] AI API review completed (output: %d bytes)", repo, prNum, len(reviewContent))
+	log.Printf("✅ [%s#%d] AI review completed", repo, prNum)
 	return reviewContent, diffText, nil
 }
 
 // processWithClaudeCLI 使用 Claude CLI 模式处理审查
 func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, token, providerType string) (reviewContent string, diffText string, err error) {
-	// 1. 获取 PR 详细信息
-	log.Printf("📋 [%s#%d] [Claude CLI Step 1/7] Fetching PR info...", repo, prNum)
+	// 获取 PR 详细信息
 	prInfo, err := vcsClient.GetPRInfo(repo, prNum)
 	if err != nil {
-		log.Printf("⚠️ [%s#%d] Failed to get PR info (continuing): %v", repo, prNum, err)
 		prInfo = &lib.PRInfo{
 			Title:  fmt.Sprintf("PR #%d", prNum),
 			Author: "unknown",
 		}
 	}
 
-	// 2. 获取分支信息
-	log.Printf("📋 [%s#%d] [Claude CLI Step 2/7] Fetching branch info...", repo, prNum)
+	// 获取分支信息
 	branchInfo, err := vcsClient.GetBranchInfo(repo, prNum)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Failed to get branch info: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get branch info: %w", err)
 	}
 
-	log.Printf("🌿 [%s#%d] Branch: %s -> %s (SHA: %s)", repo, prNum, branchInfo.SourceBranch, branchInfo.TargetBranch, branchInfo.SourceSHA[:8])
-
-	// 3. 获取克隆 URL
-	log.Printf("🔗 [%s#%d] [Claude CLI Step 3/7] Getting clone URL...", repo, prNum)
+	// 获取克隆 URL
 	cloneURL, err := vcsClient.GetCloneURL(repo)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Failed to get clone URL: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get clone URL: %w", err)
 	}
 
-	// 3. 构建带认证的克隆 URL
+	// 构建带认证的克隆 URL
 	authenticatedURL, err := lib.BuildCloneURL(cloneURL, token, providerType)
 	if err != nil {
-		log.Printf("❌ [%s#%d] Failed to build authenticated clone URL: %v", repo, prNum, err)
+		log.Printf("❌ [%s#%d] Failed to build clone URL: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to build clone URL: %w", err)
 	}
 
-	// 4. 克隆仓库
-	log.Printf("📦 [%s#%d] [Claude CLI Step 4/7] Cloning repository and checking out branch...", repo, prNum)
+	// 克隆仓库
 	repoManager := lib.NewRepoManager(
 		appConfig.GetRepoCloneTempDir(),
 		appConfig.GetRepoCloneTimeout(),
@@ -1057,32 +1042,27 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 
 	workDir, err := repoManager.CloneAndCheckout(authenticatedURL, *branchInfo)
 	if err != nil {
-		log.Printf("❌ [%s#%d] Failed to clone/checkout: %v (this will trigger fallback)", repo, prNum, err)
+		log.Printf("❌ [%s#%d] Clone failed: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to clone repository: %w", err)
 	}
-	log.Printf("✅ [%s#%d] Repository cloned to: %s", repo, prNum, workDir)
 
-	// 5. 清理工作目录（defer）
+	// 清理工作目录（defer）
 	if appConfig.GetRepoCloneCleanupAfterReview() {
 		defer func() {
 			if cleanupErr := repoManager.Cleanup(workDir); cleanupErr != nil {
 				log.Printf("⚠️ [%s#%d] Cleanup failed: %v", repo, prNum, cleanupErr)
-			} else {
-				log.Printf("✅ [%s#%d] Work directory cleaned up", repo, prNum)
 			}
 		}()
 	}
 
-	// 6. 获取 diff（仍然需要 diff 用于行内评论和上下文增强）
-	log.Printf("📄 [%s#%d] [Claude CLI Step 5/7] Fetching diff for context enhancement...", repo, prNum)
+	// 获取 diff
 	diffText, err = vcsClient.GetDiff(repo, prNum)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get diff: %w", err)
 	}
 
-	// 7. 构建上下文增强和引导信息
-	log.Printf("📊 [%s#%d] [Claude CLI Step 6/7] Building context enhancement and guidance...", repo, prNum)
+	// 构建上下文增强和引导信息
 	enhancer := lib.NewDiffEnhancer(lib.PRContextInfo{
 		Title:        prInfo.Title,
 		Description:  prInfo.Description,
@@ -1095,33 +1075,17 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		UpdatedAt:    prInfo.UpdatedAt,
 	}, diffText)
 
-	// 生成 Claude CLI 引导信息
 	claudeGuidance := enhancer.BuildClaudeCLIGuidance()
 	enhancedDiff := enhancer.EnhanceDiff(diffText)
-	log.Printf("✅ [%s#%d] Context enhancement complete", repo, prNum)
 
-	// 8. 获取其他人的评论（用于判断是否修复了之前的问题）
+	// 获取其他人的评论
 	var commentsContext string
 	if appConfig.GetClaudeCLIIncludeOthersComments() {
-		log.Printf("💬 [%s#%d] Fetching existing comments from others...", repo, prNum)
-		var err error
-		commentsContext, err = fetchOthersComments(vcsClient, repo, prNum)
-		if err != nil {
-			// 评论获取失败不中断流程，只记录警告
-			log.Printf("⚠️ [%s#%d] Failed to fetch comments (will continue without them): %v", repo, prNum, err)
-			commentsContext = ""
-		} else if commentsContext != "" {
-			log.Printf("✅ [%s#%d] Found existing comments from others", repo, prNum)
-		} else {
-			log.Printf("ℹ️ [%s#%d] No comments from others found", repo, prNum)
-		}
-	} else {
-		log.Printf("ℹ️ [%s#%d] Skipping comments fetch (include_others_comments is disabled)", repo, prNum)
-		commentsContext = ""
+		commentsContext, _ = fetchOthersComments(vcsClient, repo, prNum)
 	}
 
-	// 9. 使用 Claude CLI 审查（传入引导信息和增强的 diff）
-	log.Printf("🤖 [%s#%d] [Claude CLI Step 7/7] Starting Claude CLI review with full project context...", repo, prNum)
+	// 使用 Claude CLI 审查
+	log.Printf("🤖 [%s#%d] Starting Claude review...", repo, prNum)
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
 	_ = apiURL // 不使用，但需要接收
 	_ = apiKey // 不使用，但需要接收
@@ -1149,16 +1113,16 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 
 	result, err := cliClient.ReviewCodeInRepo(workDir, fullContext, "")
 	if err != nil {
-		log.Printf("❌ [%s#%d] Claude CLI execution error: %v (will trigger fallback)", repo, prNum, err)
+		log.Printf("❌ [%s#%d] Claude review failed: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("Claude CLI review failed: %w", err)
 	}
 
 	if !result.Success {
-		log.Printf("❌ [%s#%d] Claude CLI returned unsuccessful result: %v (will trigger fallback)", repo, prNum, result.Error)
+		log.Printf("❌ [%s#%d] Claude review unsuccessful: %v", repo, prNum, result.Error)
 		return "", "", fmt.Errorf("Claude CLI review unsuccessful: %v", result.Error)
 	}
 
-	log.Printf("✅ [%s#%d] Claude CLI review completed successfully (output: %d bytes)", repo, prNum, len(result.Content))
+	log.Printf("✅ [%s#%d] Claude review completed", repo, prNum)
 	return result.Content, diffText, nil
 }
 

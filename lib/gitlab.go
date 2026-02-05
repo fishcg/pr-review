@@ -21,12 +21,12 @@ type GitLabClient struct {
 
 // gitlabMRResponse GitLab MR 响应结构
 type gitlabMRResponse struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	Draft       bool   `json:"draft"`
-	WorkInProgress bool `json:"work_in_progress"`
-	Author      struct {
+	Title          string `json:"title"`
+	Description    string `json:"description"`
+	State          string `json:"state"`
+	Draft          bool   `json:"draft"`
+	WorkInProgress bool   `json:"work_in_progress"`
+	Author         struct {
 		Username string `json:"username"`
 	} `json:"author"`
 	SHA      string `json:"sha"`
@@ -35,11 +35,11 @@ type gitlabMRResponse struct {
 		HeadSHA  string `json:"head_sha"`
 		StartSHA string `json:"start_sha"`
 	} `json:"diff_refs"`
-	SourceBranch string `json:"source_branch"`
-	TargetBranch string `json:"target_branch"`
+	SourceBranch string   `json:"source_branch"`
+	TargetBranch string   `json:"target_branch"`
 	Labels       []string `json:"labels"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	CreatedAt    string   `json:"created_at"`
+	UpdatedAt    string   `json:"updated_at"`
 }
 
 // MRChanges MR 变更信息
@@ -280,8 +280,6 @@ func (c *GitLabClient) PostInlineComment(repo string, mrNum int, commitSHA, path
 		log.Printf("❌ GitLab API response (status %d): %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("failed to post inline comment, status: %s", resp.Status)
 	}
-
-	log.Printf("✅ GitLab inline comment posted successfully")
 	return nil
 }
 

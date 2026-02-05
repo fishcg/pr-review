@@ -58,14 +58,10 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 
 	// 如果目录已存在，先删除（可能是之前失败的 review）
 	if _, err := os.Stat(workDir); err == nil {
-		log.Printf("⚠️ Work directory already exists, removing: %s", workDir)
 		if err := os.RemoveAll(workDir); err != nil {
 			return "", fmt.Errorf("failed to remove existing work directory: %w", err)
 		}
 	}
-
-	log.Printf("📦 Cloning repository to: %s", workDir)
-	log.Printf("   Target branch: %s", branchInfo.TargetBranch)
 
 	// 3. 克隆仓库
 	ctx, cancel := context.WithTimeout(context.Background(), rm.CloneTimeout)
@@ -96,21 +92,16 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	startTime := time.Now()
+	// startTime := time.Now()
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("clone timeout after %v", rm.CloneTimeout)
 		}
 		return "", fmt.Errorf("git clone failed: %w, stderr: %s", err, stderr.String())
 	}
-	duration := time.Since(startTime)
-
-	log.Printf("✅ Clone completed in %.1fs", duration.Seconds())
 
 	// 4. Fetch 源分支（如果与目标分支不同）
 	if branchInfo.SourceBranch != branchInfo.TargetBranch {
-		log.Printf("🔄 Fetching source branch: %s", branchInfo.SourceBranch)
-
 		var fetchArgs []string
 		if rm.ShallowClone {
 			fetchArgs = []string{"fetch", "--depth", fmt.Sprintf("%d", rm.ShallowDepth), "origin", branchInfo.SourceBranch}
@@ -130,8 +121,6 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 		}
 
 		// 5. Checkout 到源分支
-		log.Printf("🔀 Checking out source branch: %s", branchInfo.SourceBranch)
-
 		checkoutCmd := exec.Command("git", "checkout", branchInfo.SourceBranch)
 		checkoutCmd.Dir = workDir
 
@@ -141,7 +130,6 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 		if err := checkoutCmd.Run(); err != nil {
 			// 尝试使用 SHA 来 checkout（如果提供了 SHA）
 			if branchInfo.SourceSHA != "" {
-				log.Printf("   Trying SHA: %s", branchInfo.SourceSHA[:8])
 				checkoutSHACmd := exec.Command("git", "checkout", branchInfo.SourceSHA)
 				checkoutSHACmd.Dir = workDir
 
@@ -152,8 +140,6 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 				return "", fmt.Errorf("checkout failed: %w, stderr: %s", err, checkoutStderr.String())
 			}
 		}
-
-		log.Printf("✅ Checkout completed")
 	}
 
 	return workDir, nil
@@ -179,8 +165,6 @@ func (rm *RepoManager) Cleanup(workDir string) error {
 	if err := os.RemoveAll(workDir); err != nil {
 		return fmt.Errorf("failed to remove work directory: %w", err)
 	}
-
-	log.Printf("🗑️ Cleaned up: %s", workDir)
 	return nil
 }
 
@@ -216,10 +200,6 @@ func (rm *RepoManager) CleanupOldRepos(maxAge time.Duration) error {
 				cleaned++
 			}
 		}
-	}
-
-	if cleaned > 0 {
-		log.Printf("🗑️ Cleaned up %d old repositories", cleaned)
 	}
 
 	return nil
