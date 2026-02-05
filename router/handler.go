@@ -903,17 +903,17 @@ func buildUnmatchedIssuesTable(issues []reviewIssue) string {
 
 	var builder strings.Builder
 	builder.WriteString("### 其他问题\n")
-	builder.WriteString("| 文件名 | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |\n")
+	builder.WriteString("|  代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 | 文件名 |\n")
 	builder.WriteString("|---|---|---|---|---|---|\n")
 	for _, issue := range issues {
-		builder.WriteString(fmt.Sprintf("| %s:%s | %s | %s | %s | %s | %s |\n",
-			escapeTable(issue.File),
-			formatLineValue(issue.NewLine),
+		builder.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |  %s:%s |\n",
 			escapeTable(issue.Code),
 			escapeTable(issue.Severity),
 			escapeTable(issue.Category),
 			escapeTable(issue.Problem),
 			escapeTable(issue.Suggestion),
+			escapeTable(issue.File),
+			formatLineValue(issue.NewLine),
 		))
 	}
 	return strings.TrimSpace(builder.String())
