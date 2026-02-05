@@ -590,6 +590,7 @@
                                 <li><strong>审查范围：</strong>完整项目上下文 + diff</li>
                                 <li><strong>适用场景：</strong>重要功能、架构变更</li>
                                 <li><strong>特色功能：</strong>可使用 Read、Glob、Grep 工具探索代码</li>
+                                <li><strong>上下文感知：</strong>可读取其他审查者的评论，判断问题是否已修复</li>
                             </ul>
                         </div>
                     </div>
@@ -871,6 +872,8 @@ claude_cli:
   api_url: ""                     # API 地址（可选）
   model: ""                       # 模型（可选）
   # 例如："anthropic/claude-sonnet-4.5"
+  include_others_comments: true   # 将其他人的评论加入审查上下文
+  enable_output_log: false        # 是否输出完整日志（调试用）
 
 # 仓库克隆配置（仅 Claude CLI 模式需要）
 repo_clone:

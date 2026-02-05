@@ -9,7 +9,7 @@
 ## 功能特性
 
 - ✅ 支持 GitHub 和 GitLab 双平台
-- ✅ **双模式审查**：API 模式（快速）+ Claude CLI 模式（深度理解项目上下文）
+- ✅ **双模式审查**：API 模式（快速）+ Claude CLI 模式（深度理解项目上下文，可读取其他人评论）
 - ✅ 自动获取 PR/MR 的代码变更
 - ✅ 调用 AI 服务进行代码审查
 - ✅ 自动将审查结果评论到 PR/MR
@@ -149,19 +149,22 @@ repo_clone:
 - ✅ **深度理解项目上下文**：可读取项目中的其他文件
 - ✅ **智能探索代码**：使用 Read、Glob、Grep 工具理解代码结构
 - ✅ **更准确的审查**：基于整个项目而非单独的 diff
+- ✅ **上下文感知**：可读取其他审查者的评论，判断代码是否修复了之前的问题
 - ⚠️ 速度较慢（1-5 分钟）
 - ⚠️ 需要安装 Claude CLI（`npm install -g @anthropic-ai/claude-code`）
 
 **工作流程**:
 1. Clone 仓库到临时目录（使用 commit SHA 命名避免冲突）
 2. Checkout 到 PR/MR 的源分支
-3. 执行 Claude CLI，Claude 可以：
+3. 获取其他审查者的评论（可选，通过 `include_others_comments` 配置）
+4. 执行 Claude CLI，Claude 可以：
    - 使用 Read 工具查看项目文件
    - 使用 Glob 工具查找相关文件
    - 使用 Grep 工具搜索代码
    - 使用 Bash 工具执行 git 命令
-4. 基于整个项目上下文生成审查报告
-5. 自动清理临时目录（每小时清理超过 24 小时的仓库）
+   - 查看其他人的评论，判断问题是否已修复
+5. 基于整个项目上下文生成审查报告
+6. 自动清理临时目录（每小时清理超过 24 小时的仓库）
 
 ### VCS Provider 配置
 
@@ -232,6 +235,9 @@ claude_cli:
   max_output_length: 100000       # 最大输出长度
   api_key: "sk-ant-xxxxxxxxxxxxx" # Anthropic API Key（必填）
   api_url: ""                     # Anthropic API URL（可选，默认官方 API）
+  model: ""                       # Claude 模型（可选）
+  include_others_comments: true   # 是否将其他人的评论加入审查上下文（默认 true）
+  enable_output_log: false        # 是否在日志中输出完整回复（调试用，默认 false）
 ```
 
 **安装 Claude CLI**:
@@ -252,6 +258,16 @@ npm install -g @anthropic-ai/claude-code
 - `api_url`: 自定义 API Base URL（可选）
   - 留空使用默认 API 地址
   - 如果配置了值，会覆盖环境变量 `ANTHROPIC_BASE_URL`
+- `model`: Claude 模型（可选）
+  - 例如：`"anthropic/claude-sonnet-4.5"` 或 `"anthropic/claude-opus-4.5"`
+  - 留空使用默认模型
+- `include_others_comments`: 是否将其他人的评论加入审查上下文（默认 `true`）
+  - 开启后，Claude 会看到其他审查者（非当前认证用户）的评论
+  - Claude 可以判断代码是否修复了之前提出的问题，并进行针对性回复
+  - 关闭后，审查时不会获取现有评论，仅基于代码本身审查
+- `enable_output_log`: 是否在日志中输出 Claude 的完整回复（默认 `false`）
+  - 开启后会打印完整输出内容，方便调试
+  - 生产环境建议关闭以减少日志量
 
 **Claude CLI 环境变量**:
 - `ANTHROPIC_AUTH_TOKEN`: 认证令牌（不是 `ANTHROPIC_API_KEY`）
