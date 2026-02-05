@@ -8,6 +8,8 @@ type Comment struct {
 	Line      int    // 行号（行内评论）
 	Position  int    // Diff 位置（行内评论，GitHub）
 	CreatedAt string // 创建时间
+	UserID    int64  // 用户 ID
+	UserLogin string // 用户登录名
 }
 
 // VCSProvider 定义版本控制系统提供商的统一接口
@@ -37,6 +39,9 @@ type VCSProvider interface {
 
 	// GetCloneURL 获取仓库克隆 URL
 	GetCloneURL(repo string) (string, error)
+
+	// GetCurrentUser 获取当前认证用户的登录名
+	GetCurrentUser() (string, error)
 
 	// GetProviderType 返回提供商类型（用于日志）
 	GetProviderType() string

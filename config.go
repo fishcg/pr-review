@@ -9,13 +9,15 @@ import (
 
 // ClaudeCLIConfig Claude CLI 配置
 type ClaudeCLIConfig struct {
-	BinaryPath      string   `yaml:"binary_path"`       // Claude CLI 路径
-	AllowedTools    []string `yaml:"allowed_tools"`     // 允许使用的工具
-	Timeout         int      `yaml:"timeout"`           // 超时秒数
-	MaxOutputLength int      `yaml:"max_output_length"` // 最大输出长度
-	APIKey          string   `yaml:"api_key"`           // Anthropic API Key
-	APIURL          string   `yaml:"api_url"`           // Anthropic API URL (可选)
-	Model           string   `yaml:"model"`             // Claude Model (可选)
+	BinaryPath           string   `yaml:"binary_path"`             // Claude CLI 路径
+	AllowedTools         []string `yaml:"allowed_tools"`           // 允许使用的工具
+	Timeout              int      `yaml:"timeout"`                 // 超时秒数
+	MaxOutputLength      int      `yaml:"max_output_length"`       // 最大输出长度
+	APIKey               string   `yaml:"api_key"`                 // Anthropic API Key
+	APIURL               string   `yaml:"api_url"`                 // Anthropic API URL (可选)
+	Model                string   `yaml:"model"`                   // Claude Model (可选)
+	IncludeOthersComments bool     `yaml:"include_others_comments"` // 是否包含其他人的评论
+	EnableOutputLog      bool     `yaml:"enable_output_log"`       // 是否启用输出日志
 }
 
 // RepoCloneConfig 仓库克隆配置
@@ -253,6 +255,14 @@ func (c *Config) GetClaudeCLIAPIURL() string {
 
 func (c *Config) GetClaudeCLIModel() string {
 	return c.ClaudeCLI.Model
+}
+
+func (c *Config) GetClaudeCLIIncludeOthersComments() bool {
+	return c.ClaudeCLI.IncludeOthersComments
+}
+
+func (c *Config) GetClaudeCLIEnableOutputLog() bool {
+	return c.ClaudeCLI.EnableOutputLog
 }
 
 // 仓库克隆配置的单独 getter 方法

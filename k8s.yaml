@@ -96,6 +96,8 @@ data:
       model: ""  # Claude Model (optional)
       # Example: "anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5"
       # Will be set as ANTHROPIC_MODEL environment variable
+      include_others_comments: true  # Include others' comments in review (default: true)
+      enable_output_log: false       # Enable Claude CLI output logging (default: false)
 
     # Repository Clone Configuration (only needed for review_mode: "claude_cli")
     repo_clone:

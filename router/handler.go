@@ -36,6 +36,8 @@ type Config interface {
 	GetClaudeCLIAPIKey() string
 	GetClaudeCLIAPIURL() string
 	GetClaudeCLIModel() string
+	GetClaudeCLIIncludeOthersComments() bool
+	GetClaudeCLIEnableOutputLog() bool
 	// 仓库克隆配置
 	GetRepoCloneTempDir() string
 	GetRepoCloneTimeout() int
@@ -1035,15 +1037,35 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 	}
 
 	// 6. 获取 diff（仍然需要 diff 用于行内评论）
-	log.Printf("📄 [%s#%d] [Claude CLI Step 4/5] Fetching diff for inline comments...", repo, prNum)
+	log.Printf("📄 [%s#%d] [Claude CLI Step 4/6] Fetching diff for inline comments...", repo, prNum)
 	diffText, err = vcsClient.GetDiff(repo, prNum)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("failed to get diff: %w", err)
 	}
 
-	// 7. 使用 Claude CLI 审查
-	log.Printf("🤖 [%s#%d] [Claude CLI Step 5/5] Starting Claude CLI review with full project context...", repo, prNum)
+	// 7. 获取其他人的评论（用于判断是否修复了之前的问题）
+	var commentsContext string
+	if appConfig.GetClaudeCLIIncludeOthersComments() {
+		log.Printf("💬 [%s#%d] [Claude CLI Step 5/6] Fetching existing comments from others...", repo, prNum)
+		var err error
+		commentsContext, err = fetchOthersComments(vcsClient, repo, prNum)
+		if err != nil {
+			// 评论获取失败不中断流程，只记录警告
+			log.Printf("⚠️ [%s#%d] Failed to fetch comments (will continue without them): %v", repo, prNum, err)
+			commentsContext = ""
+		} else if commentsContext != "" {
+			log.Printf("✅ [%s#%d] Found existing comments from others", repo, prNum)
+		} else {
+			log.Printf("ℹ️ [%s#%d] No comments from others found", repo, prNum)
+		}
+	} else {
+		log.Printf("ℹ️ [%s#%d] [Claude CLI Step 5/6] Skipping comments fetch (include_others_comments is disabled)", repo, prNum)
+		commentsContext = ""
+	}
+
+	// 8. 使用 Claude CLI 审查
+	log.Printf("🤖 [%s#%d] [Claude CLI Step 6/6] Starting Claude CLI review with full project context...", repo, prNum)
 	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
 	_ = apiURL // 不使用，但需要接收
 	_ = apiKey // 不使用，但需要接收
@@ -1059,9 +1081,10 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		appConfig.GetClaudeCLIAPIKey(),
 		appConfig.GetClaudeCLIAPIURL(),
 		appConfig.GetClaudeCLIModel(),
+		appConfig.GetClaudeCLIEnableOutputLog(),
 	)
 
-	result, err := cliClient.ReviewCodeInRepo(workDir, diffText)
+	result, err := cliClient.ReviewCodeInRepo(workDir, diffText, commentsContext)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Claude CLI execution error: %v (will trigger fallback)", repo, prNum, err)
 		return "", "", fmt.Errorf("Claude CLI review failed: %w", err)
@@ -1074,4 +1097,58 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 
 	log.Printf("✅ [%s#%d] Claude CLI review completed successfully (output: %d bytes)", repo, prNum, len(result.Content))
 	return result.Content, diffText, nil
+}
+
+// fetchOthersComments 获取其他人（非当前认证用户）的评论
+func fetchOthersComments(vcsClient lib.VCSProvider, repo string, prNum int) (string, error) {
+	// 获取当前认证用户
+	currentUser, err := vcsClient.GetCurrentUser()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// 获取普通评论和行内评论
+	issueComments, err := vcsClient.GetIssueComments(repo, prNum)
+	if err != nil {
+		return "", fmt.Errorf("failed to get issue comments: %w", err)
+	}
+
+	inlineComments, err := vcsClient.GetInlineComments(repo, prNum)
+	if err != nil {
+		return "", fmt.Errorf("failed to get inline comments: %w", err)
+	}
+
+	// 过滤掉当前用户的评论
+	var othersComments []lib.Comment
+	for _, comment := range issueComments {
+		if comment.UserLogin != currentUser {
+			othersComments = append(othersComments, comment)
+		}
+	}
+	for _, comment := range inlineComments {
+		if comment.UserLogin != currentUser {
+			othersComments = append(othersComments, comment)
+		}
+	}
+
+	// 如果没有其他人的评论，返回空字符串
+	if len(othersComments) == 0 {
+		return "", nil
+	}
+
+	// 构建评论上下文字符串
+	var sb strings.Builder
+	sb.WriteString("=== 已有评论（来自其他审查者）===\n\n")
+	sb.WriteString("以下是其他审查者在此 PR/MR 中提出的评论，可以结合这些评论做审查，比如判断代码是否已经修复了这些问题：\n\n")
+
+	for i, comment := range othersComments {
+		sb.WriteString(fmt.Sprintf("**评论 %d** (来自 @%s, %s)\n", i+1, comment.UserLogin, comment.CreatedAt))
+		if comment.Path != "" {
+			sb.WriteString(fmt.Sprintf("位置: %s:%d\n", comment.Path, comment.Line))
+		}
+		sb.WriteString(fmt.Sprintf("内容:\n%s\n\n", comment.Body))
+		sb.WriteString("---\n\n")
+	}
+	fmt.Println(sb.String())
+	return sb.String(), nil
 }

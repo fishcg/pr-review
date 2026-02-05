@@ -204,6 +204,10 @@ func (c *GitHubClient) GetIssueComments(repo string, prNum int) ([]Comment, erro
 		ID        int64  `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
+		User      struct {
+			ID    int64  `json:"id"`
+			Login string `json:"login"`
+		} `json:"user"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&githubComments); err != nil {
@@ -216,6 +220,8 @@ func (c *GitHubClient) GetIssueComments(repo string, prNum int) ([]Comment, erro
 			ID:        gc.ID,
 			Body:      gc.Body,
 			CreatedAt: gc.CreatedAt,
+			UserID:    gc.User.ID,
+			UserLogin: gc.User.Login,
 		}
 	}
 
@@ -252,6 +258,10 @@ func (c *GitHubClient) GetInlineComments(repo string, prNum int) ([]Comment, err
 		Line      int    `json:"line"`
 		Position  int    `json:"position"`
 		CreatedAt string `json:"created_at"`
+		User      struct {
+			ID    int64  `json:"id"`
+			Login string `json:"login"`
+		} `json:"user"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&githubComments); err != nil {
@@ -267,6 +277,8 @@ func (c *GitHubClient) GetInlineComments(repo string, prNum int) ([]Comment, err
 			Line:      gc.Line,
 			Position:  gc.Position,
 			CreatedAt: gc.CreatedAt,
+			UserID:    gc.User.ID,
+			UserLogin: gc.User.Login,
 		}
 	}
 
@@ -333,6 +345,40 @@ func (c *GitHubClient) GetCloneURL(repo string) (string, error) {
 	// GitHub repo format: owner/repo
 	// Clone URL: https://github.com/owner/repo.git
 	return fmt.Sprintf("https://github.com/%s.git", repo), nil
+}
+
+// GetCurrentUser 实现 VCSProvider 接口 - 获取当前认证用户
+func (c *GitHubClient) GetCurrentUser() (string, error) {
+	userURL := "https://api.github.com/user"
+
+	req, err := http.NewRequest("GET", userURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get current user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GitHub API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var user struct {
+		Login string `json:"login"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return "", fmt.Errorf("failed to decode user: %w", err)
+	}
+
+	return user.Login, nil
 }
 
 // GetProviderType 实现 VCSProvider 接口

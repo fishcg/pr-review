@@ -22,6 +22,7 @@ type ClaudeCLIClient struct {
 	APIKey          string
 	APIURL          string
 	Model           string
+	EnableOutputLog bool
 }
 
 // ReviewResult Claude CLI 审查结果
@@ -32,7 +33,7 @@ type ReviewResult struct {
 }
 
 // NewClaudeCLIClient 创建 Claude CLI 客户端
-func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate, apiKey, apiURL, model string) *ClaudeCLIClient {
+func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, maxOutputLength int, systemPrompt, userTemplate, apiKey, apiURL, model string, enableOutputLog bool) *ClaudeCLIClient {
 	return &ClaudeCLIClient{
 		BinaryPath:      binaryPath,
 		AllowedTools:    allowedTools,
@@ -43,11 +44,12 @@ func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, m
 		APIKey:          apiKey,
 		APIURL:          apiURL,
 		Model:           model,
+		EnableOutputLog: enableOutputLog,
 	}
 }
 
 // ReviewCodeInRepo 在克隆的仓库目录中执行 Claude CLI 审查
-func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (*ReviewResult, error) {
+func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, commentsContext string) (*ReviewResult, error) {
 	// 1. 构建审查 prompt
 	// 添加 Claude CLI 工具使用说明
 	toolGuidance := `请对以下 PR/MR 的代码变更进行专业的代码审查。
@@ -64,6 +66,11 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 	// 组合：工具指导 + 系统 prompt + 用户 prompt
 	fullPrompt := toolGuidance + c.SystemPrompt + "\n\n"
+
+	// 如果有其他人的评论，添加到 prompt 中
+	if commentsContext != "" {
+		fullPrompt += commentsContext + "\n\n"
+	}
 
 	// 替换用户模板中的 {diff} 占位符
 	userPrompt := strings.ReplaceAll(c.UserTemplate, "{diff}", diffContent)
@@ -142,6 +149,11 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string) (
 
 	// 6. 处理输出
 	output := stdout.String()
+
+	// 如果启用了输出日志，打印完整输出
+	if c.EnableOutputLog {
+		log.Printf("📝 Claude CLI Output:\n%s", output)
+	}
 
 	// 截断保护
 	if len(output) > c.MaxOutputLength {

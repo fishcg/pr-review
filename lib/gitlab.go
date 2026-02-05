@@ -267,6 +267,10 @@ func (c *GitLabClient) GetIssueComments(repo string, mrNum int) ([]Comment, erro
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
 		System    bool   `json:"system"`
+		Author    struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		} `json:"author"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&gitlabNotes); err != nil {
@@ -283,6 +287,8 @@ func (c *GitLabClient) GetIssueComments(repo string, mrNum int) ([]Comment, erro
 			ID:        note.ID,
 			Body:      note.Body,
 			CreatedAt: note.CreatedAt,
+			UserID:    note.Author.ID,
+			UserLogin: note.Author.Username,
 		})
 	}
 
@@ -319,7 +325,11 @@ func (c *GitLabClient) GetInlineComments(repo string, mrNum int) ([]Comment, err
 			Body      string `json:"body"`
 			CreatedAt string `json:"created_at"`
 			System    bool   `json:"system"`
-			Position  struct {
+			Author    struct {
+				ID       int64  `json:"id"`
+				Username string `json:"username"`
+			} `json:"author"`
+			Position struct {
 				NewPath string `json:"new_path"`
 				OldPath string `json:"old_path"`
 				NewLine int    `json:"new_line"`
@@ -361,6 +371,8 @@ func (c *GitLabClient) GetInlineComments(repo string, mrNum int) ([]Comment, err
 				Path:      path,
 				Line:      line,
 				CreatedAt: note.CreatedAt,
+				UserID:    note.Author.ID,
+				UserLogin: note.Author.Username,
 			})
 		}
 	}
@@ -430,6 +442,39 @@ func (c *GitLabClient) GetCloneURL(repo string) (string, error) {
 	// 构建克隆 URL
 	cloneURL := fmt.Sprintf("%s://%s/%s.git", baseURLParsed.Scheme, baseURLParsed.Host, repo)
 	return cloneURL, nil
+}
+
+// GetCurrentUser 实现 VCSProvider 接口 - 获取当前认证用户
+func (c *GitLabClient) GetCurrentUser() (string, error) {
+	userURL := fmt.Sprintf("%s/api/v4/user", c.BaseURL)
+
+	req, err := http.NewRequest("GET", userURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get current user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var user struct {
+		Username string `json:"username"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return "", fmt.Errorf("failed to decode user: %w", err)
+	}
+
+	return user.Username, nil
 }
 
 // GetProviderType 实现 VCSProvider 接口
