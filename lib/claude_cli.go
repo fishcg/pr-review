@@ -140,16 +140,9 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 
 		// 其他错误 - 输出详细的调试信息
 		log.Printf("❌ Claude CLI failed: %v", err)
-		log.Printf("❌ Command: %s %v", c.BinaryPath, args)
-		log.Printf("❌ Working directory: %s", workDir)
-		log.Printf("❌ Stdout length: %d bytes", stdout.Len())
-		log.Printf("❌ Stderr length: %d bytes", stderr.Len())
-
 		// 输出 stderr（如果有）
 		if stderrStr != "" {
 			log.Printf("❌ Claude CLI stderr:\n%s", stderrStr)
-		} else {
-			log.Printf("❌ Claude CLI stderr: (empty)")
 		}
 
 		// 输出 stdout（如果有且不太长）
