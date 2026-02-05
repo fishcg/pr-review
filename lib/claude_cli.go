@@ -208,7 +208,5 @@ func (c *ClaudeCLIClient) CheckCLIAvailable() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("Claude CLI not available at %s: %w, stderr: %s", c.BinaryPath, err, stderr.String())
 	}
-
-	version := strings.TrimSpace(stdout.String())
 	return nil
 }

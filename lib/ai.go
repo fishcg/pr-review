@@ -96,9 +96,6 @@ func (c *AIClient) ReviewCode(diffText string) (string, error) {
 		return "", fmt.Errorf("AI service call failed after %v: %w", elapsed, err)
 	}
 	defer resp.Body.Close()
-
-	elapsed := time.Since(startTime)
-
 	aiBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read AI response: %w", err)

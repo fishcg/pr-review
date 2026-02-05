@@ -141,7 +141,6 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 	if reviewMode == "claude_cli" {
 		// Claude CLI 模式
-		log.Printf("🔧 [%s#%d] Using Claude CLI mode (deep context review)", repo, prNum)
 		reviewContent, diffText, err = processWithClaudeCLI(vcsClient, repo, prNum, token, providerType)
 		if err != nil {
 			log.Printf("❌ [%s#%d] Claude CLI mode failed: %v", repo, prNum, err)
@@ -1122,7 +1121,6 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		return "", "", fmt.Errorf("Claude CLI review unsuccessful: %v", result.Error)
 	}
 
-	log.Printf("✅ [%s#%d] Claude review completed", repo, prNum)
 	return result.Content, diffText, nil
 }
 
