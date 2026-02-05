@@ -1139,7 +1139,7 @@ func fetchOthersComments(vcsClient lib.VCSProvider, repo string, prNum int) (str
 	// 构建评论上下文字符串
 	var sb strings.Builder
 	sb.WriteString("=== 已有评论（来自其他审查者）===\n\n")
-	sb.WriteString("以下是其他审查者在此 PR/MR 中提出的评论，可以结合这些评论做审查，比如判断代码是否已经修复了这些问题：\n\n")
+	sb.WriteString("以下是其他审查者在此 PR/MR 中提出的评论，可以结合这些评论做审查，比如代码还未修复这些问题时进行回复。回复时需要注意如果和其他审查者相关，带上审查者@名称和评论内容(截取关键部分)：\n\n")
 
 	for i, comment := range othersComments {
 		sb.WriteString(fmt.Sprintf("**评论 %d** (来自 @%s, %s)\n", i+1, comment.UserLogin, comment.CreatedAt))

@@ -138,8 +138,11 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 			}, fmt.Errorf("Claude CLI timeout after %v", c.Timeout)
 		}
 
-		// 其他错误
+		// 其他错误 - 输出详细的 stderr 信息
 		log.Printf("❌ Claude CLI failed: %v", err)
+		if stderrStr != "" {
+			log.Printf("❌ Claude CLI stderr:\n%s", stderrStr)
+		}
 		return &ReviewResult{
 			Content: "",
 			Success: false,

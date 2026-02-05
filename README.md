@@ -2,7 +2,7 @@
 
 基于 AI 的自动代码审查服务，支持 GitHub Pull Request 和 GitLab Merge Request 自动审查。
 
-**项目说明主页**: [https://ci.acgay.com](https://ci.acgay.com)
+**项目说明主页**: [https://ci.acgay.cn](https://ci.acgay.cn)
 
 ![审查效果示例](https://acgay.oss-cn-hangzhou.aliyuncs.com/ai/images/cr.png)
 
