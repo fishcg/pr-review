@@ -1077,6 +1077,15 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 	claudeGuidance := enhancer.BuildClaudeCLIGuidance()
 	enhancedDiff := enhancer.EnhanceDiff(diffText)
 
+	// 执行依赖影响分析和测试覆盖检测
+	modifiedFiles := enhancer.GetModifiedFilePaths()
+	analyzer := lib.NewCodeAnalyzer(workDir, modifiedFiles, diffText)
+	analysisResult := analyzer.AnalyzeDependencies()
+	analysisGuidance := analysisResult.BuildAnalysisGuidance()
+	log.Printf("✅ [%s#%d] Analysis completed: %d functions, %d call sites, %d files with tests, %d missing tests",
+		repo, prNum, len(analysisResult.ModifiedFunctions), len(analysisResult.CallSites),
+		len(analysisResult.TestCoverage), len(analysisResult.MissingTests))
+
 	// 获取其他人的评论
 	var commentsContext string
 	if appConfig.GetClaudeCLIIncludeOthersComments() {
@@ -1103,8 +1112,8 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		appConfig.GetClaudeCLIEnableOutputLog(),
 	)
 
-	// 组合：引导信息 + 其他人的评论 + 增强的 diff
-	fullContext := claudeGuidance
+	// 组合：引导信息 + 依赖分析 + 其他人的评论 + 增强的 diff
+	fullContext := claudeGuidance + "\n\n" + analysisGuidance
 	if commentsContext != "" {
 		fullContext += "\n\n" + commentsContext
 	}
