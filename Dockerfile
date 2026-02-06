@@ -19,9 +19,12 @@ RUN CGO_ENABLED=0 go build -o pr-review-service .
 FROM 172.24.173.77:30500/node:24.13.0-alpine
 WORKDIR /app
 
+# 设置时区
+ENV TZ=Asia/Shanghai
+
 # 安装 git (用于克隆仓库)
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
-    && apk add --no-cache git ca-certificates
+    && apk add --no-cache git ca-certificates tzdata
 
 # 安装 Claude CLI
 RUN npm install -g @anthropic-ai/claude-code && printf '{\n  "hasCompletedOnboarding": true,\n  "preferredLoginMethod": "console"\n}\n' > /root/.claude.json
