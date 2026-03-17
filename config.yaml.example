@@ -20,9 +20,10 @@ port: "7995"
 vcs_provider: "github"
 
 
-# Review 模式: "api" 或 "claude_cli"
+# Review 模式: "api" 或 "claude_cli" 或 "codex"
 # - api: 使用传统的 AI API 审查（只传入 diff）
 # - claude_cli: 使用 Claude CLI 深度审查（克隆仓库，理解项目上下文）
+# - codex: 使用 Codex CLI 深度审查（克隆仓库，理解项目上下文）
 review_mode: "claude_cli"
 
 # Claude CLI 配置（仅在 review_mode 为 claude_cli 时使用）
@@ -48,7 +49,23 @@ claude_cli:
   enable_output_log: false       # 是否在日志中输出 Claude 的完整回复（默认 false）
   # 开启后会在日志中打印 Claude CLI 的输出内容，方便调试
 
-# 仓库克隆配置（仅在 review_mode 为 claude_cli 时使用）
+# Codex CLI 配置（仅在 review_mode 为 codex 时使用）
+codex_cli:
+  binary_path: "codex"           # Codex CLI 可执行文件路径（默认从 PATH 查找）
+  allowed_tools:                 # 保留字段，便于统一配置
+    - "Read"
+    - "Glob"
+    - "Grep"
+    - "Bash"
+  timeout: 600                   # Codex CLI 执行超时（秒），默认 10 分钟
+  max_output_length: 100000      # 最大输出长度（字节）
+  api_key: "sk-xxxxxxxxxxxxxxxxxxxxx"   # OpenAI API Key（可选，留空则走环境变量）
+  api_url: ""                    # OpenAI Base URL（可选）
+  model: "gpt-5-codex"           # Codex 模型（可选）
+  include_others_comments: true  # 是否在审查时包含其他人的评论（默认 true）
+  enable_output_log: false       # 是否在日志中输出 Codex 的完整回复（默认 false）
+
+# 仓库克隆配置（仅在 review_mode 为 claude_cli/codex 时使用）
 repo_clone:
   temp_dir: "/tmp/pr-review-repos"  # 临时目录，用于存放克隆的仓库
   clone_timeout: 180                # 克隆超时（秒），默认 3 分钟
@@ -203,17 +220,6 @@ system_prompt: |
 
   ### 4. 🧪 测试覆盖评估（基于自动检测）
 
-  **如果检测到测试文件**:
-  1. **使用 Read 工具查看测试文件**，验证：
-     - 测试用例是否覆盖新增/修改的逻辑
-     - 是否测试了边界条件（空值、零值、最大值）
-     - 是否测试了错误处理分支
-     - 测试断言是否充分（不只是不报错，还要验证正确性）
-  2. **评估测试质量**:
-     - 是否只是形式上的测试（没有实质验证）
-     - Mock/Stub 是否合理（过度 mock 可能无法发现问题）
-     - 是否测试了集成场景（不只是单元测试）
-
   **如果缺少测试文件（⚠️ 高风险）**:
   - **必须在评审中明确指出**
   - 评估代码复杂度：
@@ -235,6 +241,7 @@ system_prompt: |
   - SELECT * 而非只查需要的字段
   - 大量数据未分页
   - 事务范围过大（长时间持锁）
+  - 数据库性能，新增的查询需要提醒下是否有创建合适的索引
 
   **并发和异步**:
   - 同步 IO 阻塞主线程（应改为异步）
@@ -260,30 +267,19 @@ system_prompt: |
   - 是否过度设计（不必要的抽象/接口）
   - 注释是否必要（代码即文档优于冗余注释）
 
-  **语言最佳实践**:
-  - Go: error 处理、defer 使用、channel 关闭
-  - JavaScript: Promise 链式调用、async/await
-  - Python: with 语句、列表推导式
-  - Java: try-with-resources、Optional
-
   ## 📋 审查流程
-
-  **步骤 1: 阅读分析报告**
-  - 仔细阅读"依赖影响分析"和"测试覆盖检测"结果
-  - 识别高风险变更（影响多处 + 缺少测试）
-
-  **步骤 2: 使用工具深入理解**
+  **步骤 1: 使用工具深入理解**
   - 对修改的文件，使用 `Read` 查看完整内容
   - 对被调用的函数，使用 `Grep` 查找所有调用位置
   - 对测试文件，使用 `Read` 查看测试覆盖情况
   - 使用 `Glob` 查找相关文件（如配置、迁移）
 
-  **步骤 3: 系统性检查**
+  **步骤 2: 系统性检查**
   - 按照上述优先级逐项检查
   - 对每个修改的函数，检查所有边界条件
   - 对每个外部输入，检查安全性验证
 
-  **步骤 4: 输出结构化报告**
+  **步骤 3: 输出结构化报告**
   - 给出 0-100 分的评分（发现致命 bug <60 分）
   - 按严重程度排序问题（High > Medium > Low）
   - 提供具体的代码行号和修改建议
@@ -379,4 +375,3 @@ user_prompt_template: |
   ### 总结
   - 一句话评价
   - 是否建议合入（建议合入时打✅标记，否则打❌）
-

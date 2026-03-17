@@ -108,7 +108,7 @@ func HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
 	token := appConfig.GetGitlabToken()
 
 	// 10. 异步触发 review
-	go ProcessReview(repo, mrNumber, lib.ProviderTypeGitLab, token)
+	go ProcessReview(repo, mrNumber, lib.ProviderTypeGitLab, token, "")
 
 	// 11. 返回成功响应
 	w.WriteHeader(http.StatusAccepted)

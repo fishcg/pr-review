@@ -96,10 +96,11 @@ func (c *GitLabClient) GetDiff(repo string, mrNum int) (string, error) {
 	// 将 GitLab 的 changes 转换为 unified diff 格式
 	diffText := c.buildUnifiedDiff(mrChanges.Changes)
 
-	// 截断保护，避免过长的 diff
-	const maxDiffLength = 24000
+	// 截断保护，避免过长的 diff（仅在 API 模式下使用，Claude CLI 模式使用本地完整 diff）
+	const maxDiffLength = 240000
 	if len(diffText) > maxDiffLength {
-		diffText = diffText[:maxDiffLength] + "\n...(truncated)"
+		log.Printf("⚠️ Diff truncated: original length %d, max %d", len(diffText), maxDiffLength)
+		diffText = diffText[:maxDiffLength] + "\n\n...(diff truncated due to size limit)"
 	}
 
 	return diffText, nil
@@ -519,6 +520,35 @@ func (c *GitLabClient) GetCurrentUser() (string, error) {
 	}
 
 	return user.Username, nil
+}
+
+// DeleteComment 删除 MR 的普通评论（note）
+func (c *GitLabClient) DeleteComment(repo string, number int, commentID int64) error {
+	encodedRepo := url.PathEscape(repo)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/notes/%d", c.BaseURL, encodedRepo, number, commentID)
+
+	req, err := http.NewRequest("DELETE", apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete comment %d, status: %s, body: %s", commentID, resp.Status, string(body))
+	}
+	return nil
+}
+
+// DeleteInlineComment 删除 MR 的行内评论（discussion note，复用 notes 端点）
+func (c *GitLabClient) DeleteInlineComment(repo string, number int, commentID int64) error {
+	return c.DeleteComment(repo, number, commentID)
 }
 
 // GetProviderType 实现 VCSProvider 接口

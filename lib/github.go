@@ -18,11 +18,11 @@ type GitHubClient struct {
 
 // githubPRResponse GitHub PR 响应结构
 type githubPRResponse struct {
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	Draft  bool   `json:"draft"`
-	User   struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	State string `json:"state"`
+	Draft bool   `json:"draft"`
+	User  struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	Head struct {
@@ -76,10 +76,11 @@ func (c *GitHubClient) GetPRDiff(repo string, prNum int) (string, error) {
 
 	diffText := string(diffBytes)
 
-	// 截断保护，避免过长的 diff
-	const maxDiffLength = 12000
+	// 截断保护，避免过长的 diff（仅在 API 模式下使用，Claude CLI 模式使用本地完整 diff）
+	const maxDiffLength = 240000
 	if len(diffText) > maxDiffLength {
-		diffText = diffText[:maxDiffLength] + "\n...(truncated)"
+		log.Printf("⚠️ Diff truncated: original length %d, max %d", len(diffText), maxDiffLength)
+		diffText = diffText[:maxDiffLength] + "\n\n...(diff truncated due to size limit)"
 	}
 
 	return diffText, nil
@@ -431,6 +432,52 @@ func (c *GitHubClient) GetCurrentUser() (string, error) {
 	}
 
 	return user.Login, nil
+}
+
+// DeleteComment 删除 PR 的普通评论（issue comment）
+func (c *GitHubClient) DeleteComment(repo string, number int, commentID int64) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/comments/%d", repo, commentID)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete comment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete comment %d, status: %s, body: %s", commentID, resp.Status, string(body))
+	}
+	return nil
+}
+
+// DeleteInlineComment 删除 PR 的行内评论（review comment）
+func (c *GitHubClient) DeleteInlineComment(repo string, number int, commentID int64) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/pulls/comments/%d", repo, commentID)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete inline comment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete inline comment %d, status: %s, body: %s", commentID, resp.Status, string(body))
+	}
+	return nil
 }
 
 // GetProviderType 实现 VCSProvider 接口

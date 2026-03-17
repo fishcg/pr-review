@@ -36,8 +36,8 @@ func main() {
 		log.Fatalf("❌ Unsupported VCS provider: %s", AppConfig.VCSProvider)
 	}
 
-	// 启动定期清理任务（如果使用 Claude CLI 模式）
-	if AppConfig.ReviewMode == "claude_cli" {
+	// 启动定期清理任务（如果使用需要克隆仓库的 CLI 模式）
+	if AppConfig.ReviewMode == "claude_cli" || AppConfig.ReviewMode == "codex" {
 		startCleanupTask()
 	}
 

@@ -238,6 +238,54 @@ func BuildCloneURL(baseURL, token, providerType string) (string, error) {
 	return parsedURL.String(), nil
 }
 
+// GetDiffFromLocalRepo 从本地仓库获取完整 diff（与目标分支对比）
+func (rm *RepoManager) GetDiffFromLocalRepo(workDir string, targetBranch string) (string, error) {
+	// 使用 git diff 获取与目标分支的差异
+	// 格式：git diff origin/target_branch...HEAD
+	diffCmd := exec.Command("git", "diff", fmt.Sprintf("origin/%s...HEAD", targetBranch))
+	diffCmd.Dir = workDir
+
+	var stdout, stderr strings.Builder
+	diffCmd.Stdout = &stdout
+	diffCmd.Stderr = &stderr
+
+	if err := diffCmd.Run(); err != nil {
+		return "", fmt.Errorf("git diff failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	diff := stdout.String()
+	if diff == "" {
+		log.Printf("⚠️ git diff returned empty, trying alternative method")
+		// 尝试其他方法：使用 merge-base 找到共同祖先
+		mergeBaseCmd := exec.Command("git", "merge-base", fmt.Sprintf("origin/%s", targetBranch), "HEAD")
+		mergeBaseCmd.Dir = workDir
+
+		var mergeBaseOut strings.Builder
+		mergeBaseCmd.Stdout = &mergeBaseOut
+
+		if err := mergeBaseCmd.Run(); err != nil {
+			return "", fmt.Errorf("git merge-base failed: %w", err)
+		}
+
+		baseCommit := strings.TrimSpace(mergeBaseOut.String())
+
+		// 使用 merge-base 结果做 diff
+		diffCmd2 := exec.Command("git", "diff", baseCommit+"..HEAD")
+		diffCmd2.Dir = workDir
+
+		var stdout2 strings.Builder
+		diffCmd2.Stdout = &stdout2
+
+		if err := diffCmd2.Run(); err != nil {
+			return "", fmt.Errorf("git diff with merge-base failed: %w", err)
+		}
+
+		diff = stdout2.String()
+	}
+
+	return diff, nil
+}
+
 // extractRepoName 从 URL 中提取仓库名称
 func extractRepoName(cloneURL string) string {
 	// 移除 .git 后缀

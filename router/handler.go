@@ -13,8 +13,10 @@ import (
 // ReviewRequest PR 审查请求体结构
 type ReviewRequest struct {
 	Repo     string `json:"repo"`               // owner/repo
-	PRNumber int    `json:"pr_number"`          // PR ID
+	PRNumber int    `json:"pr_number"`          // 兼容旧字段
+	Number   int    `json:"number"`             // 新字段：PR/MR 编号
 	Provider string `json:"provider,omitempty"` // 可选，未指定则使用配置
+	Engine   string `json:"engine,omitempty"`   // 可选：api/claude_cli/codex
 }
 
 // Config 配置接口（避免循环依赖）
@@ -38,6 +40,16 @@ type Config interface {
 	GetClaudeCLIModel() string
 	GetClaudeCLIIncludeOthersComments() bool
 	GetClaudeCLIEnableOutputLog() bool
+	// Codex CLI 配置
+	GetCodexCLIBinaryPath() string
+	GetCodexCLIAllowedTools() []string
+	GetCodexCLITimeout() int
+	GetCodexCLIMaxOutputLength() int
+	GetCodexCLIAPIKey() string
+	GetCodexCLIAPIURL() string
+	GetCodexCLIModel() string
+	GetCodexCLIIncludeOthersComments() bool
+	GetCodexCLIEnableOutputLog() bool
 	// 仓库克隆配置
 	GetRepoCloneTempDir() string
 	GetRepoCloneTimeout() int
@@ -73,6 +85,27 @@ func HandleReview(w http.ResponseWriter, r *http.Request) {
 		providerType = appConfig.GetVCSProvider()
 	}
 
+	// 2.1 兼容 pr_number 与 number
+	prNumber := req.PRNumber
+	if req.Number > 0 {
+		if req.PRNumber > 0 && req.PRNumber != req.Number {
+			http.Error(w, "pr_number and number mismatch", http.StatusBadRequest)
+			return
+		}
+		prNumber = req.Number
+	}
+	if prNumber <= 0 {
+		http.Error(w, "Invalid PR/MR number", http.StatusBadRequest)
+		return
+	}
+
+	// 2.2 可选覆盖 review engine
+	reviewEngine := strings.TrimSpace(req.Engine)
+	if reviewEngine != "" && reviewEngine != "api" && reviewEngine != "claude_cli" && reviewEngine != "codex" {
+		http.Error(w, "Invalid engine, must be one of: api, claude_cli, codex", http.StatusBadRequest)
+		return
+	}
+
 	// 3. 获取对应的 Token
 	var token string
 	switch providerType {
@@ -91,20 +124,35 @@ func HandleReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("📥 Received review request for %s #%d (provider: %s)", req.Repo, req.PRNumber, providerType)
+	log.Printf("📥 Received review request for %s #%d (provider: %s, engine: %s)", req.Repo, prNumber, providerType, chooseEngineLabel(reviewEngine))
 
 	// 4. 异步处理 Review (防止 CI HTTP 请求超时)
 	// 如果你希望 CI 等待结果，可以去掉 go 关键字
-	go ProcessReview(req.Repo, req.PRNumber, providerType, token)
+	go ProcessReview(req.Repo, prNumber, providerType, token, reviewEngine)
 
 	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(fmt.Sprintf("Review started for %s #%d", req.Repo, req.PRNumber)))
+	w.Write([]byte(fmt.Sprintf("Review started for %s #%d", req.Repo, prNumber)))
 }
 
 // HandleHealth 健康检查
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":        "ok",
+			"review_mode":   appConfig.GetReviewMode(),
+			"review_modes":  []string{"api", "claude_cli", "codex"},
+			"vcs_provider":  appConfig.GetVCSProvider(),
+			"inline_review": appConfig.GetInlineIssueComment(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 }
 
 // HandleIndex 首页处理
@@ -119,7 +167,7 @@ func HandleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 // ProcessReview 处理 PR 审查的完整流程
-func ProcessReview(repo string, prNum int, providerType string, token string) {
+func ProcessReview(repo string, prNum int, providerType string, token string, reviewModeOverride string) {
 	// === A. 创建 VCS Provider ===
 	var vcsClient lib.VCSProvider
 	switch providerType {
@@ -135,6 +183,9 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 
 	// === B. 根据 ReviewMode 选择处理策略 ===
 	reviewMode := appConfig.GetReviewMode()
+	if reviewModeOverride != "" {
+		reviewMode = reviewModeOverride
+	}
 	var reviewContent string
 	var diffText string
 	var err error
@@ -151,6 +202,21 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 			if err != nil {
 				log.Printf("❌ [%s#%d] API fallback also failed: %v", repo, prNum, err)
 				log.Printf("💥 [%s#%d] Review completely failed - both Claude CLI and API modes unsuccessful", repo, prNum)
+				return
+			}
+		}
+	} else if reviewMode == "codex" {
+		// Codex CLI 模式
+		reviewContent, diffText, err = processWithCodexCLI(vcsClient, repo, prNum, token, providerType)
+		if err != nil {
+			log.Printf("❌ [%s#%d] Codex mode failed: %v", repo, prNum, err)
+			log.Printf("⚠️ [%s#%d] Attempting fallback to API mode...", repo, prNum)
+
+			// 降级到 API 模式
+			reviewContent, diffText, err = processWithAPI(vcsClient, repo, prNum)
+			if err != nil {
+				log.Printf("❌ [%s#%d] API fallback also failed: %v", repo, prNum, err)
+				log.Printf("💥 [%s#%d] Review completely failed - both Codex and API modes unsuccessful", repo, prNum)
 				return
 			}
 		}
@@ -189,6 +255,9 @@ func ProcessReview(repo string, prNum int, providerType string, token string) {
 		}
 		comment = fmt.Sprintf("🤖 **AI Code Review**\n\n%s", summary)
 	}
+
+	// 删除当前 bot 账号的旧评论（避免重复）
+	deleteOldBotComments(vcsClient, repo, prNum)
 
 	// 发布总评论（每次都发布）
 	if err := vcsClient.PostComment(repo, prNum, comment); err != nil {
@@ -1054,11 +1123,17 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		}()
 	}
 
-	// 获取 diff
-	diffText, err = vcsClient.GetDiff(repo, prNum)
+	// 从本地仓库获取完整 diff（不受 API 限制）
+	log.Printf("🔍 [%s#%d] Getting full diff from local repository...", repo, prNum)
+	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.TargetBranch)
 	if err != nil {
-		log.Printf("❌ [%s#%d] Failed to get diff: %v", repo, prNum, err)
-		return "", "", fmt.Errorf("failed to get diff: %w", err)
+		log.Printf("⚠️ [%s#%d] Failed to get local diff: %v, falling back to API", repo, prNum, err)
+		// 降级到 API 方式
+		diffText, err = vcsClient.GetDiff(repo, prNum)
+		if err != nil {
+			log.Printf("❌ [%s#%d] Failed to get diff from API: %v", repo, prNum, err)
+			return "", "", fmt.Errorf("failed to get diff: %w", err)
+		}
 	}
 
 	// 构建上下文增强和引导信息
@@ -1133,6 +1208,144 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 	return result.Content, diffText, nil
 }
 
+// processWithCodexCLI 使用 Codex CLI 模式处理审查
+func processWithCodexCLI(vcsClient lib.VCSProvider, repo string, prNum int, token, providerType string) (reviewContent string, diffText string, err error) {
+	// 获取 PR 详细信息
+	prInfo, err := vcsClient.GetPRInfo(repo, prNum)
+	if err != nil {
+		prInfo = &lib.PRInfo{
+			Title:  fmt.Sprintf("PR #%d", prNum),
+			Author: "unknown",
+		}
+	}
+
+	// 获取分支信息
+	branchInfo, err := vcsClient.GetBranchInfo(repo, prNum)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get branch info: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get branch info: %w", err)
+	}
+
+	// 获取克隆 URL
+	cloneURL, err := vcsClient.GetCloneURL(repo)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to get clone URL: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to get clone URL: %w", err)
+	}
+
+	// 构建带认证的克隆 URL
+	authenticatedURL, err := lib.BuildCloneURL(cloneURL, token, providerType)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Failed to build clone URL: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to build clone URL: %w", err)
+	}
+
+	// 克隆仓库
+	repoManager := lib.NewRepoManager(
+		appConfig.GetRepoCloneTempDir(),
+		appConfig.GetRepoCloneTimeout(),
+		appConfig.GetRepoCloneShallowClone(),
+		appConfig.GetRepoCloneShallowDepth(),
+	)
+
+	workDir, err := repoManager.CloneAndCheckout(authenticatedURL, *branchInfo)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Clone failed: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("failed to clone repository: %w", err)
+	}
+
+	// 清理工作目录（defer）
+	if appConfig.GetRepoCloneCleanupAfterReview() {
+		defer func() {
+			if cleanupErr := repoManager.Cleanup(workDir); cleanupErr != nil {
+				log.Printf("⚠️ [%s#%d] Cleanup failed: %v", repo, prNum, cleanupErr)
+			}
+		}()
+	}
+
+	// 从本地仓库获取完整 diff（不受 API 限制）
+	log.Printf("🔍 [%s#%d] Getting full diff from local repository...", repo, prNum)
+	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.TargetBranch)
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] Failed to get local diff: %v, falling back to API", repo, prNum, err)
+		// 降级到 API 方式
+		diffText, err = vcsClient.GetDiff(repo, prNum)
+		if err != nil {
+			log.Printf("❌ [%s#%d] Failed to get diff from API: %v", repo, prNum, err)
+			return "", "", fmt.Errorf("failed to get diff: %w", err)
+		}
+	}
+
+	// 构建上下文增强和引导信息
+	enhancer := lib.NewDiffEnhancer(lib.PRContextInfo{
+		Title:        prInfo.Title,
+		Description:  prInfo.Description,
+		Author:       prInfo.Author,
+		SourceBranch: prInfo.SourceBranch,
+		TargetBranch: prInfo.TargetBranch,
+		Labels:       prInfo.Labels,
+		IsDraft:      prInfo.IsDraft,
+		CreatedAt:    prInfo.CreatedAt,
+		UpdatedAt:    prInfo.UpdatedAt,
+	}, diffText)
+
+	enhancedDiff := enhancer.EnhanceDiff(diffText)
+
+	// 执行依赖影响分析和测试覆盖检测
+	modifiedFiles := enhancer.GetModifiedFilePaths()
+	analyzer := lib.NewCodeAnalyzer(workDir, modifiedFiles, diffText)
+	analysisResult := analyzer.AnalyzeDependencies()
+	analysisGuidance := analysisResult.BuildAnalysisGuidance()
+	log.Printf("✅ [%s#%d] Analysis completed: %d functions, %d call sites, %d files with tests, %d missing tests",
+		repo, prNum, len(analysisResult.ModifiedFunctions), len(analysisResult.CallSites),
+		len(analysisResult.TestCoverage), len(analysisResult.MissingTests))
+
+	// 获取其他人的评论
+	var commentsContext string
+	if appConfig.GetCodexCLIIncludeOthersComments() {
+		commentsContext, _ = fetchOthersComments(vcsClient, repo, prNum)
+	}
+
+	// 使用 Codex CLI 审查
+	log.Printf("🤖 [%s#%d] Starting Codex review...", repo, prNum)
+	apiURL, apiKey, model, systemPrompt, userTemplate := appConfig.GetAIConfig()
+	_ = apiURL // 不使用，但需要接收
+	_ = apiKey // 不使用，但需要接收
+	_ = model  // 不使用，但需要接收
+
+	cliClient := lib.NewCodexCLIClient(
+		appConfig.GetCodexCLIBinaryPath(),
+		appConfig.GetCodexCLITimeout(),
+		appConfig.GetCodexCLIMaxOutputLength(),
+		systemPrompt,
+		userTemplate,
+		appConfig.GetCodexCLIAPIKey(),
+		appConfig.GetCodexCLIAPIURL(),
+		appConfig.GetCodexCLIModel(),
+		appConfig.GetCodexCLIEnableOutputLog(),
+	)
+
+	// 组合：引导信息 + 依赖分析 + 其他人的评论 + 增强的 diff
+	fullContext := lib.BuildCodexGuidance() + "\n\n" + analysisGuidance
+	if commentsContext != "" {
+		fullContext += "\n\n" + commentsContext
+	}
+	fullContext += "\n\n" + enhancedDiff
+
+	result, err := cliClient.ReviewCodeInRepo(workDir, branchInfo.TargetBranch, fullContext)
+	if err != nil {
+		log.Printf("❌ [%s#%d] Codex review failed: %v", repo, prNum, err)
+		return "", "", fmt.Errorf("Codex CLI review failed: %w", err)
+	}
+
+	if !result.Success {
+		log.Printf("❌ [%s#%d] Codex review unsuccessful: %v", repo, prNum, result.Error)
+		return "", "", fmt.Errorf("Codex CLI review unsuccessful: %v", result.Error)
+	}
+
+	return result.Content, diffText, nil
+}
+
 // fetchOthersComments 获取其他人（非当前认证用户）的评论
 func fetchOthersComments(vcsClient lib.VCSProvider, repo string, prNum int) (string, error) {
 	// 获取当前认证用户
@@ -1184,4 +1397,58 @@ func fetchOthersComments(vcsClient lib.VCSProvider, repo string, prNum int) (str
 		sb.WriteString("---\n\n")
 	}
 	return sb.String(), nil
+}
+
+func chooseEngineLabel(engine string) string {
+	if engine == "" {
+		return "default"
+	}
+	return engine
+}
+
+// deleteOldBotComments 删除当前 bot 账号在该 PR/MR 上发布的所有评论
+func deleteOldBotComments(vcsClient lib.VCSProvider, repo string, prNum int) {
+	currentUser, err := vcsClient.GetCurrentUser()
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] Failed to get current user for cleanup: %v", repo, prNum, err)
+		return
+	}
+
+	deleted := 0
+
+	// 删除普通评论
+	issueComments, err := vcsClient.GetIssueComments(repo, prNum)
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] Failed to get issue comments for cleanup: %v", repo, prNum, err)
+	} else {
+		for _, c := range issueComments {
+			if c.UserLogin == currentUser {
+				if err := vcsClient.DeleteComment(repo, prNum, c.ID); err != nil {
+					log.Printf("⚠️ [%s#%d] Failed to delete comment %d: %v", repo, prNum, c.ID, err)
+				} else {
+					deleted++
+				}
+			}
+		}
+	}
+
+	// 删除行内评论
+	inlineComments, err := vcsClient.GetInlineComments(repo, prNum)
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] Failed to get inline comments for cleanup: %v", repo, prNum, err)
+	} else {
+		for _, c := range inlineComments {
+			if c.UserLogin == currentUser {
+				if err := vcsClient.DeleteInlineComment(repo, prNum, c.ID); err != nil {
+					log.Printf("⚠️ [%s#%d] Failed to delete inline comment %d: %v", repo, prNum, c.ID, err)
+				} else {
+					deleted++
+				}
+			}
+		}
+	}
+
+	if deleted > 0 {
+		log.Printf("🧹 [%s#%d] Deleted %d old bot comments", repo, prNum, deleted)
+	}
 }

@@ -20,6 +20,19 @@ type ClaudeCLIConfig struct {
 	EnableOutputLog      bool     `yaml:"enable_output_log"`       // 是否启用输出日志
 }
 
+// CodexCLIConfig Codex CLI 配置
+type CodexCLIConfig struct {
+	BinaryPath            string   `yaml:"binary_path"`              // Codex CLI 路径
+	AllowedTools          []string `yaml:"allowed_tools"`            // 保留字段，兼容统一配置结构
+	Timeout               int      `yaml:"timeout"`                  // 超时秒数
+	MaxOutputLength       int      `yaml:"max_output_length"`        // 最大输出长度
+	APIKey                string   `yaml:"api_key"`                  // OpenAI API Key（可选）
+	APIURL                string   `yaml:"api_url"`                  // OpenAI Base URL（可选）
+	Model                 string   `yaml:"model"`                    // Codex Model（可选）
+	IncludeOthersComments bool     `yaml:"include_others_comments"`  // 是否包含其他人的评论
+	EnableOutputLog       bool     `yaml:"enable_output_log"`        // 是否启用输出日志
+}
+
 // RepoCloneConfig 仓库克隆配置
 type RepoCloneConfig struct {
 	TempDir            string `yaml:"temp_dir"`              // 临时目录
@@ -44,10 +57,13 @@ type Config struct {
 	LineMatchStrategy string `yaml:"line_match_strategy"` // "snippet_first"(默认) 或 "line_number_first"
 
 	// Review 模式配置
-	ReviewMode string `yaml:"review_mode"` // "api" 或 "claude_cli"
+	ReviewMode string `yaml:"review_mode"` // "api" 或 "claude_cli" 或 "codex"
 
 	// Claude CLI 配置
 	ClaudeCLI ClaudeCLIConfig `yaml:"claude_cli"`
+
+	// Codex CLI 配置
+	CodexCLI CodexCLIConfig `yaml:"codex_cli"`
 
 	// 仓库克隆配置
 	RepoClone RepoCloneConfig `yaml:"repo_clone"`
@@ -130,8 +146,8 @@ func LoadConfig(filename string) error {
 	if AppConfig.ReviewMode == "" {
 		AppConfig.ReviewMode = "api" // 默认使用 API 模式
 	}
-	if AppConfig.ReviewMode != "api" && AppConfig.ReviewMode != "claude_cli" {
-		return fmt.Errorf("review_mode must be either 'api' or 'claude_cli', got: %s", AppConfig.ReviewMode)
+	if AppConfig.ReviewMode != "api" && AppConfig.ReviewMode != "claude_cli" && AppConfig.ReviewMode != "codex" {
+		return fmt.Errorf("review_mode must be one of 'api', 'claude_cli', 'codex', got: %s", AppConfig.ReviewMode)
 	}
 
 	// Claude CLI 配置默认值
@@ -146,6 +162,20 @@ func LoadConfig(filename string) error {
 	}
 	if AppConfig.ClaudeCLI.MaxOutputLength == 0 {
 		AppConfig.ClaudeCLI.MaxOutputLength = 100000 // 默认 100KB
+	}
+
+	// Codex CLI 配置默认值
+	if AppConfig.CodexCLI.BinaryPath == "" {
+		AppConfig.CodexCLI.BinaryPath = "codex" // 默认假设 codex 在 PATH 中
+	}
+	if len(AppConfig.CodexCLI.AllowedTools) == 0 {
+		AppConfig.CodexCLI.AllowedTools = []string{"Read", "Glob", "Grep", "Bash"}
+	}
+	if AppConfig.CodexCLI.Timeout == 0 {
+		AppConfig.CodexCLI.Timeout = 600 // 默认 10 分钟
+	}
+	if AppConfig.CodexCLI.MaxOutputLength == 0 {
+		AppConfig.CodexCLI.MaxOutputLength = 100000 // 默认 100KB
 	}
 
 	// 仓库克隆配置默认值
@@ -263,6 +293,42 @@ func (c *Config) GetClaudeCLIIncludeOthersComments() bool {
 
 func (c *Config) GetClaudeCLIEnableOutputLog() bool {
 	return c.ClaudeCLI.EnableOutputLog
+}
+
+func (c *Config) GetCodexCLIBinaryPath() string {
+	return c.CodexCLI.BinaryPath
+}
+
+func (c *Config) GetCodexCLIAllowedTools() []string {
+	return c.CodexCLI.AllowedTools
+}
+
+func (c *Config) GetCodexCLITimeout() int {
+	return c.CodexCLI.Timeout
+}
+
+func (c *Config) GetCodexCLIMaxOutputLength() int {
+	return c.CodexCLI.MaxOutputLength
+}
+
+func (c *Config) GetCodexCLIAPIKey() string {
+	return c.CodexCLI.APIKey
+}
+
+func (c *Config) GetCodexCLIAPIURL() string {
+	return c.CodexCLI.APIURL
+}
+
+func (c *Config) GetCodexCLIModel() string {
+	return c.CodexCLI.Model
+}
+
+func (c *Config) GetCodexCLIIncludeOthersComments() bool {
+	return c.CodexCLI.IncludeOthersComments
+}
+
+func (c *Config) GetCodexCLIEnableOutputLog() bool {
+	return c.CodexCLI.EnableOutputLog
 }
 
 // 仓库克隆配置的单独 getter 方法

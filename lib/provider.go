@@ -59,6 +59,12 @@ type VCSProvider interface {
 	// GetCurrentUser 获取当前认证用户的登录名
 	GetCurrentUser() (string, error)
 
+	// DeleteComment 删除普通评论
+	DeleteComment(repo string, number int, commentID int64) error
+
+	// DeleteInlineComment 删除行内评论
+	DeleteInlineComment(repo string, number int, commentID int64) error
+
 	// GetProviderType 返回提供商类型（用于日志）
 	GetProviderType() string
 }
