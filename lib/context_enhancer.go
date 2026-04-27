@@ -128,6 +128,21 @@ func (e *DiffEnhancer) EnhanceDiff(diff string) string {
 		}
 	}
 
+	// 审查约束和指导
+	builder.WriteString("\n═══════════════════════════════════════════════════════════\n")
+	builder.WriteString("                   REVIEW GUIDELINES                        \n")
+	builder.WriteString("═══════════════════════════════════════════════════════════\n\n")
+	builder.WriteString("本次 PR 修改的文件列表：\n")
+	for _, summary := range e.summaries {
+		builder.WriteString(fmt.Sprintf("  - %s\n", summary.Path))
+	}
+	builder.WriteString("\n📋 审查要求：\n")
+	builder.WriteString("  1. 你可以使用 Read/Grep/Glob/Bash 工具查看项目中的任何文件以理解上下文\n")
+	builder.WriteString("  2. 你的评论应该主要针对上述修改的文件，但可以提及相关的依赖文件\n")
+	builder.WriteString("  3. 在问题表格中填写的「文件名」和「代码片段」必须来自上述修改的文件\n")
+	builder.WriteString("  4. 代码片段必须从 diff 中逐字提取，不要虚构或推断不存在的代码\n")
+	builder.WriteString("  5. 如果需要引用其他文件的代码来说明问题，在「问题描述」中说明，不要放在代码片段列\n")
+
 	// 原始 diff
 	builder.WriteString("\n═══════════════════════════════════════════════════════════\n")
 	builder.WriteString("                      CODE CHANGES                          \n")
