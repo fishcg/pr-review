@@ -49,7 +49,10 @@ func NewClaudeCLIClient(binaryPath string, allowedTools []string, timeout int, m
 }
 
 // ReviewCodeInRepo 在克隆的仓库目录中执行 Claude CLI 审查
-func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, commentsContext string) (*ReviewResult, error) {
+//
+// extraMCPConfig: 可选的额外 --mcp-config 参数（JSON 字符串或文件路径）。空串表示不启用。
+// extraAllowedTools: 追加到 --allowedTools 的工具名列表（如 codegraph 的 mcp__codegraph__*）
+func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, commentsContext string, extraMCPConfig string, extraAllowedTools []string) (*ReviewResult, error) {
 	// 1. 构建审查 prompt
 	// 添加 Claude CLI 工具使用说明
 	toolGuidance := `请对以下 PR/MR 的代码变更进行专业的代码审查。
@@ -81,11 +84,18 @@ func (c *ClaudeCLIClient) ReviewCodeInRepo(workDir string, diffContent string, c
 	userPrompt := strings.ReplaceAll(c.UserTemplate, "{diff}", diffContent)
 	reviewPrompt := fullPrompt + userPrompt
 
-	allowedToolsStr := strings.Join(c.AllowedTools, ",")
+	allowedTools := append([]string{}, c.AllowedTools...)
+	allowedTools = append(allowedTools, extraAllowedTools...)
+	allowedToolsStr := strings.Join(allowedTools, ",")
 
 	args := []string{
 		"--print",
 		"--allowedTools", allowedToolsStr,
+	}
+
+	// 注入额外 MCP 服务器配置（如 codegraph）
+	if strings.TrimSpace(extraMCPConfig) != "" {
+		args = append(args, "--mcp-config", extraMCPConfig)
 	}
 
 	// 2. 创建执行上下文（带超时）

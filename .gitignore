@@ -50,6 +50,7 @@ temp/
 dist/
 build/
 bin/
+.cache/
 
 # Docker
 *.dockerignore

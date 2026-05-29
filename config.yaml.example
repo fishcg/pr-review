@@ -73,6 +73,16 @@ repo_clone:
   shallow_depth: 100                # 浅克隆深度
   cleanup_after_review: true        # Review 后是否立即清理工作目录
 
+# ===== CodeGraph 集成（可选，仅 claude_cli/codex 模式生效）=====
+# CodeGraph 在克隆下来的仓库里建立语义索引（符号、调用图、路由等），
+# 通过 MCP 协议暴露给 Claude/Codex CLI，让它们查图代替 grep/Read，
+# 通常能减少 ~50% token 和 ~57% 工具调用，但首次建索引会增加几十秒到几分钟。
+# 仓库较小时收益不明显，谨慎开启。
+codegraph:
+  enabled: false        # 是否启用（默认关闭）
+  binary_path: "codegraph"  # CodeGraph 可执行文件，默认从 PATH 查找
+  index_timeout: 600    # 建索引超时（秒），超时后会跳过索引、不影响主流程
+
 # ===== GitHub Configuration =====
 # GitHub Personal Access Token (required when vcs_provider=github)
 # Needs permissions: repo (for private repos) or public_repo (for public repos)

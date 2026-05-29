@@ -102,11 +102,15 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 
 	// 4. Fetch 源分支（如果与目标分支不同）
 	if branchInfo.SourceBranch != branchInfo.TargetBranch {
+		// 显式把远端分支映射到本地分支引用，避免 fetch 只写 FETCH_HEAD
+		// 导致后续 `git checkout <branch>` 找不到本地分支而失败。
+		refspec := fmt.Sprintf("refs/heads/%s:refs/remotes/origin/%s",
+			branchInfo.SourceBranch, branchInfo.SourceBranch)
 		var fetchArgs []string
 		if rm.ShallowClone {
-			fetchArgs = []string{"fetch", "--depth", fmt.Sprintf("%d", rm.ShallowDepth), "origin", branchInfo.SourceBranch}
+			fetchArgs = []string{"fetch", "--depth", fmt.Sprintf("%d", rm.ShallowDepth), "origin", refspec}
 		} else {
-			fetchArgs = []string{"fetch", "origin", branchInfo.SourceBranch}
+			fetchArgs = []string{"fetch", "origin", refspec}
 		}
 
 		fetchCmd := exec.Command("git", fetchArgs...)
@@ -120,24 +124,49 @@ func (rm *RepoManager) CloneAndCheckout(cloneURL string, branchInfo BranchInfo) 
 			// 不返回错误，继续尝试 checkout
 		}
 
-		// 5. Checkout 到源分支
-		checkoutCmd := exec.Command("git", "checkout", branchInfo.SourceBranch)
+		// 5. Checkout 到源分支的提交。
+		// 优先用 SourceSHA（最精确，不依赖本地分支名）；
+		// 没有 SHA 时回退到 origin/<source> 远端跟踪分支。
+		checkoutTarget := branchInfo.SourceSHA
+		if checkoutTarget == "" {
+			checkoutTarget = fmt.Sprintf("origin/%s", branchInfo.SourceBranch)
+		}
+
+		checkoutCmd := exec.Command("git", "checkout", "--detach", checkoutTarget)
 		checkoutCmd.Dir = workDir
 
 		var checkoutStderr strings.Builder
 		checkoutCmd.Stderr = &checkoutStderr
 
 		if err := checkoutCmd.Run(); err != nil {
-			// 尝试使用 SHA 来 checkout（如果提供了 SHA）
-			if branchInfo.SourceSHA != "" {
-				checkoutSHACmd := exec.Command("git", "checkout", branchInfo.SourceSHA)
-				checkoutSHACmd.Dir = workDir
-
-				if err := checkoutSHACmd.Run(); err != nil {
-					return "", fmt.Errorf("checkout failed: %w, stderr: %s", err, checkoutStderr.String())
+			// 回退：尝试 origin/<source> 远端跟踪分支
+			fallback := fmt.Sprintf("origin/%s", branchInfo.SourceBranch)
+			if checkoutTarget != fallback {
+				retryCmd := exec.Command("git", "checkout", "--detach", fallback)
+				retryCmd.Dir = workDir
+				if retryErr := retryCmd.Run(); retryErr != nil {
+					return "", fmt.Errorf("checkout failed for %s and %s: %w, stderr: %s",
+						checkoutTarget, fallback, err, checkoutStderr.String())
 				}
 			} else {
-				return "", fmt.Errorf("checkout failed: %w, stderr: %s", err, checkoutStderr.String())
+				return "", fmt.Errorf("checkout failed for %s: %w, stderr: %s",
+					checkoutTarget, err, checkoutStderr.String())
+			}
+		}
+
+		// 6. 校验 HEAD 确实落在源分支提交上，避免静默停留在目标分支
+		// 导致 diff 为空、模型凭空臆测（幻觉）。
+		if branchInfo.SourceSHA != "" {
+			headCmd := exec.Command("git", "rev-parse", "HEAD")
+			headCmd.Dir = workDir
+			var headOut strings.Builder
+			headCmd.Stdout = &headOut
+			if err := headCmd.Run(); err == nil {
+				gotHead := strings.TrimSpace(headOut.String())
+				if gotHead != branchInfo.SourceSHA {
+					log.Printf("⚠️ HEAD=%s 与源分支 SHA=%s 不一致（diff 可能不准确）",
+						gotHead, branchInfo.SourceSHA)
+				}
 			}
 		}
 	}
@@ -238,11 +267,22 @@ func BuildCloneURL(baseURL, token, providerType string) (string, error) {
 	return parsedURL.String(), nil
 }
 
-// GetDiffFromLocalRepo 从本地仓库获取完整 diff（与目标分支对比）
-func (rm *RepoManager) GetDiffFromLocalRepo(workDir string, targetBranch string) (string, error) {
-	// 使用 git diff 获取与目标分支的差异
-	// 格式：git diff origin/target_branch...HEAD
-	diffCmd := exec.Command("git", "diff", fmt.Sprintf("origin/%s...HEAD", targetBranch))
+// GetDiffFromLocalRepo 从本地仓库获取 PR/MR 的完整 diff
+// （即源分支相对目标分支自分叉点起的全部变更，等价于 PR/MR Files Changed 视图）。
+// 通过显式计算 merge-base 来获取 diff，避免浅克隆下 `git diff A...B` 退化为
+// 浅克隆边界处的"伪 base"，导致结果只包含源分支最近若干 commit 的变更。
+func (rm *RepoManager) GetDiffFromLocalRepo(workDir, sourceBranch, targetBranch string) (string, error) {
+	targetRef := fmt.Sprintf("origin/%s", targetBranch)
+
+	mergeBase, err := rm.ensureMergeBase(workDir, targetRef, "HEAD", sourceBranch, targetBranch)
+	if err != nil {
+		return "", fmt.Errorf("failed to find merge-base between %s and HEAD: %w", targetRef, err)
+	}
+
+	log.Printf("🔗 Diff range: %s..HEAD (merge-base of source=%s vs target=%s)",
+		shortSHA(mergeBase), sourceBranch, targetBranch)
+
+	diffCmd := exec.Command("git", "diff", fmt.Sprintf("%s..HEAD", mergeBase))
 	diffCmd.Dir = workDir
 
 	var stdout, stderr strings.Builder
@@ -250,40 +290,82 @@ func (rm *RepoManager) GetDiffFromLocalRepo(workDir string, targetBranch string)
 	diffCmd.Stderr = &stderr
 
 	if err := diffCmd.Run(); err != nil {
-		return "", fmt.Errorf("git diff failed: %w, stderr: %s", err, stderr.String())
+		return "", fmt.Errorf("git diff %s..HEAD failed: %w, stderr: %s", mergeBase, err, stderr.String())
 	}
 
-	diff := stdout.String()
-	if diff == "" {
-		log.Printf("⚠️ git diff returned empty, trying alternative method")
-		// 尝试其他方法：使用 merge-base 找到共同祖先
-		mergeBaseCmd := exec.Command("git", "merge-base", fmt.Sprintf("origin/%s", targetBranch), "HEAD")
-		mergeBaseCmd.Dir = workDir
+	return stdout.String(), nil
+}
 
-		var mergeBaseOut strings.Builder
-		mergeBaseCmd.Stdout = &mergeBaseOut
-
-		if err := mergeBaseCmd.Run(); err != nil {
-			return "", fmt.Errorf("git merge-base failed: %w", err)
-		}
-
-		baseCommit := strings.TrimSpace(mergeBaseOut.String())
-
-		// 使用 merge-base 结果做 diff
-		diffCmd2 := exec.Command("git", "diff", baseCommit+"..HEAD")
-		diffCmd2.Dir = workDir
-
-		var stdout2 strings.Builder
-		diffCmd2.Stdout = &stdout2
-
-		if err := diffCmd2.Run(); err != nil {
-			return "", fmt.Errorf("git diff with merge-base failed: %w", err)
-		}
-
-		diff = stdout2.String()
+// ensureMergeBase 查找 merge-base；浅克隆下若 merge-base 不可达，会逐步加深
+// 直至可达或转为 unshallow。
+func (rm *RepoManager) ensureMergeBase(workDir, ref1, ref2, sourceBranch, targetBranch string) (string, error) {
+	if base, ok := tryMergeBase(workDir, ref1, ref2); ok {
+		return base, nil
 	}
 
-	return diff, nil
+	if !rm.ShallowClone {
+		return "", fmt.Errorf("no merge-base reachable between %s and %s", ref1, ref2)
+	}
+
+	base := rm.ShallowDepth
+	if base <= 0 {
+		base = 100
+	}
+	deepenSteps := []int{base * 5, base * 20, base * 100}
+	for _, depth := range deepenSteps {
+		log.Printf("⚠️ merge-base not found in shallow clone, deepening fetch to depth=%d", depth)
+		deepenFetch(workDir, targetBranch, depth)
+		if sourceBranch != "" && sourceBranch != targetBranch {
+			deepenFetch(workDir, sourceBranch, depth)
+		}
+		if b, ok := tryMergeBase(workDir, ref1, ref2); ok {
+			return b, nil
+		}
+	}
+
+	log.Printf("⚠️ merge-base still missing, attempting unshallow fetch")
+	unshallowCmd := exec.Command("git", "fetch", "--unshallow", "origin")
+	unshallowCmd.Dir = workDir
+	if err := unshallowCmd.Run(); err != nil {
+		log.Printf("⚠️ unshallow fetch failed (continuing): %v", err)
+	}
+	if b, ok := tryMergeBase(workDir, ref1, ref2); ok {
+		return b, nil
+	}
+
+	return "", fmt.Errorf("merge-base unreachable between %s and %s after deepening and unshallow", ref1, ref2)
+}
+
+func tryMergeBase(workDir, a, b string) (string, bool) {
+	cmd := exec.Command("git", "merge-base", a, b)
+	cmd.Dir = workDir
+	var out strings.Builder
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", false
+	}
+	base := strings.TrimSpace(out.String())
+	return base, base != ""
+}
+
+func deepenFetch(workDir, branch string, depth int) {
+	if branch == "" {
+		return
+	}
+	cmd := exec.Command("git", "fetch", fmt.Sprintf("--depth=%d", depth), "origin", branch)
+	cmd.Dir = workDir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("⚠️ deepen fetch origin/%s depth=%d failed: %v, stderr: %s", branch, depth, err, stderr.String())
+	}
+}
+
+func shortSHA(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }
 
 // extractRepoName 从 URL 中提取仓库名称

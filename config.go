@@ -42,6 +42,13 @@ type RepoCloneConfig struct {
 	CleanupAfterReview bool   `yaml:"cleanup_after_review"`  // Review 后是否清理
 }
 
+// CodeGraphYAMLConfig CodeGraph 集成配置（YAML 形式）
+type CodeGraphYAMLConfig struct {
+	Enabled      bool   `yaml:"enabled"`       // 是否启用
+	BinaryPath   string `yaml:"binary_path"`   // codegraph 可执行文件
+	IndexTimeout int    `yaml:"index_timeout"` // 建索引超时秒数
+}
+
 // Config 配置结构
 type Config struct {
 	AIApiURL           string `yaml:"ai_api_url"`
@@ -67,6 +74,9 @@ type Config struct {
 
 	// 仓库克隆配置
 	RepoClone RepoCloneConfig `yaml:"repo_clone"`
+
+	// CodeGraph 集成配置
+	CodeGraph CodeGraphYAMLConfig `yaml:"codegraph"`
 
 	// VCS Provider 配置
 	VCSProvider string `yaml:"vcs_provider"` // "github" 或 "gitlab"
@@ -189,6 +199,14 @@ func LoadConfig(filename string) error {
 		AppConfig.RepoClone.ShallowDepth = 100 // 默认深度 100
 	}
 	// ShallowClone 和 CleanupAfterReview 默认为 false，不需要显式设置
+
+	// CodeGraph 配置默认值
+	if AppConfig.CodeGraph.BinaryPath == "" {
+		AppConfig.CodeGraph.BinaryPath = "codegraph"
+	}
+	if AppConfig.CodeGraph.IndexTimeout == 0 {
+		AppConfig.CodeGraph.IndexTimeout = 600 // 默认 10 分钟
+	}
 
 	return nil
 }
@@ -350,4 +368,17 @@ func (c *Config) GetRepoCloneShallowDepth() int {
 
 func (c *Config) GetRepoCloneCleanupAfterReview() bool {
 	return c.RepoClone.CleanupAfterReview
+}
+
+// CodeGraph 配置 getter
+func (c *Config) GetCodeGraphEnabled() bool {
+	return c.CodeGraph.Enabled
+}
+
+func (c *Config) GetCodeGraphBinaryPath() string {
+	return c.CodeGraph.BinaryPath
+}
+
+func (c *Config) GetCodeGraphIndexTimeout() int {
+	return c.CodeGraph.IndexTimeout
 }

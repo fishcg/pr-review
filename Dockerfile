@@ -29,6 +29,9 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # 安装 Claude CLI
 RUN npm install -g @anthropic-ai/claude-code && printf '{\n  "hasCompletedOnboarding": true,\n  "preferredLoginMethod": "console"\n}\n' > /root/.claude.json
 
+# 安装 CodeGraph（语义索引 + MCP server，给 Claude/Codex 当代码探索的旁路工具）
+RUN npm install -g @colbymchenry/codegraph && codegraph --version
+
 # 复制二进制文件
 COPY --from=builder /app/pr-review-service .
 # 复制静态文件

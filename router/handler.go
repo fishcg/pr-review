@@ -56,6 +56,10 @@ type Config interface {
 	GetRepoCloneShallowClone() bool
 	GetRepoCloneShallowDepth() int
 	GetRepoCloneCleanupAfterReview() bool
+	// CodeGraph 集成配置
+	GetCodeGraphEnabled() bool
+	GetCodeGraphBinaryPath() string
+	GetCodeGraphIndexTimeout() int
 }
 
 var appConfig Config
@@ -233,6 +237,11 @@ func ProcessReview(repo string, prNum int, providerType string, token string, re
 	// === D. 发布评论 ===
 	inlineMode := appConfig.GetInlineIssueComment()
 
+	// 先删除当前 bot 账号的旧评论，再发布本轮评论。
+	// 必须先删：postInlineIssues 内部会按 file+line 对现有行内评论去重，
+	// 若旧评论还在，本轮相同位置的问题会被误判为重复而静默跳过，导致问题丢失。
+	deleteOldBotComments(vcsClient, repo, prNum)
+
 	comment := fmt.Sprintf("🤖 **AI Code Review**\n\n%s", reviewContent)
 	if inlineMode {
 		headSHA, err := vcsClient.GetHeadSHA(repo, prNum)
@@ -247,7 +256,7 @@ func ProcessReview(repo string, prNum int, providerType string, token string, re
 
 		summary := buildSummaryComment(reviewContent)
 		if strings.TrimSpace(summary) == "" {
-			summary = "（未能解析评分/修改点/总结）"
+			summary = explainEmptySummary(reviewContent)
 		}
 		unmatchedSummary := buildUnmatchedIssuesTable(unmatched)
 		if unmatchedSummary != "" {
@@ -255,9 +264,6 @@ func ProcessReview(repo string, prNum int, providerType string, token string, re
 		}
 		comment = fmt.Sprintf("🤖 **AI Code Review**\n\n%s", summary)
 	}
-
-	// 删除当前 bot 账号的旧评论（避免重复）
-	deleteOldBotComments(vcsClient, repo, prNum)
 
 	// 发布总评论（每次都发布）
 	if err := vcsClient.PostComment(repo, prNum, comment); err != nil {
@@ -295,6 +301,24 @@ func buildSummaryComment(content string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+// explainEmptySummary 在无法解析出评分/修改点/总结时，给出可定位的失败原因，
+// 而不是只丢一句无信息的占位符。区分两种情况：
+//   - 模型输出本身为空（CLI 执行失败或返回空）
+//   - 模型有输出但缺少预期小节（格式不符），此时回退展示原始输出，避免内容被丢弃
+func explainEmptySummary(reviewContent string) string {
+	trimmed := strings.TrimSpace(reviewContent)
+	if trimmed == "" {
+		return "⚠️ 未能生成审查结果：AI 返回内容为空（可能是 CLI 执行失败、超时或鉴权问题，请查看服务日志）。"
+	}
+
+	const maxRaw = 4000
+	raw := trimmed
+	if len(raw) > maxRaw {
+		raw = raw[:maxRaw] + "\n\n...(原始输出过长已截断)"
+	}
+	return "⚠️ 未能解析出标准的「评分/修改点/总结」小节，以下为 AI 原始输出：\n\n" + raw
 }
 
 func extractMarkdownSection(content, title string) string {
@@ -413,16 +437,71 @@ func parseIssuesFromReview(content string) []reviewIssue {
 }
 
 func splitTableRow(line string) []string {
-	raw := strings.Split(line, "|")
+	raw := splitUnescapedPipe(line)
 	cells := make([]string, 0, len(raw))
 	for _, cell := range raw {
-		trimmed := strings.TrimSpace(cell)
+		trimmed := strings.TrimSpace(unescapeTableCell(cell))
 		if trimmed == "" {
 			continue
 		}
 		cells = append(cells, trimmed)
 	}
 	return cells
+}
+
+// splitUnescapedPipe 仅在未转义的 | 处切分，保留 \| 在单元格内。
+func splitUnescapedPipe(line string) []string {
+	var cells []string
+	var sb strings.Builder
+	escaped := false
+	for _, r := range line {
+		if escaped {
+			sb.WriteRune('\\')
+			sb.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '|' {
+			cells = append(cells, sb.String())
+			sb.Reset()
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	if escaped {
+		sb.WriteRune('\\')
+	}
+	cells = append(cells, sb.String())
+	return cells
+}
+
+// unescapeTableCell 还原 markdown 表格里的转义字符，使代码片段恢复原文。
+func unescapeTableCell(cell string) string {
+	if !strings.Contains(cell, "\\") {
+		return cell
+	}
+	var sb strings.Builder
+	escaped := false
+	for _, r := range cell {
+		if escaped {
+			sb.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	if escaped {
+		sb.WriteRune('\\')
+	}
+	return sb.String()
 }
 
 func parseFileLine(input string) (string, int, string, bool) {
@@ -456,11 +535,34 @@ func parseLineNumber(input string) int {
 	if trimmed == "" || trimmed == "-" {
 		return 0
 	}
-	value, err := strconv.Atoi(trimmed)
-	if err != nil || value <= 0 {
-		return 0
+	if value, err := strconv.Atoi(trimmed); err == nil {
+		if value <= 0 {
+			return 0
+		}
+		return value
 	}
-	return value
+	// AI 有时会返回行号范围（如 "100-107"、"9-31"），取首个数字。
+	// 精确定位仍交给 snippet 匹配，这里只为通过解析阶段的过滤。
+	if n, ok := leadingInt(trimmed); ok {
+		return n
+	}
+	return 0
+}
+
+// leadingInt 提取字符串开头连续的数字（如 "100-107" -> 100）。
+func leadingInt(s string) (int, bool) {
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	value, err := strconv.Atoi(s[:end])
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
 }
 
 type diffLineInfo struct {
@@ -1123,9 +1225,9 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 		}()
 	}
 
-	// 从本地仓库获取完整 diff（不受 API 限制）
+	// 从本地仓库获取完整 diff（源分支 vs 目标分支自分叉点起的全部变更，不受 API 限制）
 	log.Printf("🔍 [%s#%d] Getting full diff from local repository...", repo, prNum)
-	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.TargetBranch)
+	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.SourceBranch, branchInfo.TargetBranch)
 	if err != nil {
 		log.Printf("⚠️ [%s#%d] Failed to get local diff: %v, falling back to API", repo, prNum, err)
 		// 降级到 API 方式
@@ -1192,9 +1294,16 @@ func processWithClaudeCLI(vcsClient lib.VCSProvider, repo string, prNum int, tok
 	if commentsContext != "" {
 		fullContext += "\n\n" + commentsContext
 	}
+
+	// 可选：构建 CodeGraph 索引并准备 MCP 注入
+	cgManager, cgMCPConfig, cgAllowedTools := setupCodeGraph(workDir, repo, prNum)
+	if cgManager.Enabled() && cgMCPConfig != "" {
+		fullContext += "\n\n" + lib.CodeGraphGuidance()
+	}
+
 	fullContext += "\n\n" + enhancedDiff
 
-	result, err := cliClient.ReviewCodeInRepo(workDir, fullContext, "")
+	result, err := cliClient.ReviewCodeInRepo(workDir, fullContext, "", cgMCPConfig, cgAllowedTools)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Claude review failed: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("Claude CLI review failed: %w", err)
@@ -1263,9 +1372,9 @@ func processWithCodexCLI(vcsClient lib.VCSProvider, repo string, prNum int, toke
 		}()
 	}
 
-	// 从本地仓库获取完整 diff（不受 API 限制）
+	// 从本地仓库获取完整 diff（源分支 vs 目标分支自分叉点起的全部变更，不受 API 限制）
 	log.Printf("🔍 [%s#%d] Getting full diff from local repository...", repo, prNum)
-	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.TargetBranch)
+	diffText, err = repoManager.GetDiffFromLocalRepo(workDir, branchInfo.SourceBranch, branchInfo.TargetBranch)
 	if err != nil {
 		log.Printf("⚠️ [%s#%d] Failed to get local diff: %v, falling back to API", repo, prNum, err)
 		// 降级到 API 方式
@@ -1330,9 +1439,16 @@ func processWithCodexCLI(vcsClient lib.VCSProvider, repo string, prNum int, toke
 	if commentsContext != "" {
 		fullContext += "\n\n" + commentsContext
 	}
+
+	// 可选：构建 CodeGraph 索引并准备 MCP 注入
+	cgManager, cgConfigArgs := setupCodeGraphForCodex(workDir, repo, prNum)
+	if cgManager.Enabled() && len(cgConfigArgs) > 0 {
+		fullContext += "\n\n" + lib.CodeGraphGuidance()
+	}
+
 	fullContext += "\n\n" + enhancedDiff
 
-	result, err := cliClient.ReviewCodeInRepo(workDir, branchInfo.TargetBranch, fullContext)
+	result, err := cliClient.ReviewCodeInRepo(workDir, branchInfo.TargetBranch, fullContext, cgConfigArgs)
 	if err != nil {
 		log.Printf("❌ [%s#%d] Codex review failed: %v", repo, prNum, err)
 		return "", "", fmt.Errorf("Codex CLI review failed: %w", err)
@@ -1404,6 +1520,58 @@ func chooseEngineLabel(engine string) string {
 		return "default"
 	}
 	return engine
+}
+
+// buildCodeGraphManager 根据配置创建 codegraph 管理器（未启用时仍返回非 nil 句柄）
+func buildCodeGraphManager() *lib.CodeGraphManager {
+	return lib.NewCodeGraphManager(lib.CodeGraphConfig{
+		Enabled:      appConfig.GetCodeGraphEnabled(),
+		BinaryPath:   appConfig.GetCodeGraphBinaryPath(),
+		IndexTimeout: appConfig.GetCodeGraphIndexTimeout(),
+	})
+}
+
+// setupCodeGraph 为 Claude CLI 准备 codegraph 集成。
+// 如果未启用、二进制不可用或建索引失败，返回空配置（不阻塞主流程）。
+func setupCodeGraph(workDir, repo string, prNum int) (*lib.CodeGraphManager, string, []string) {
+	mgr := buildCodeGraphManager()
+	if !mgr.Enabled() {
+		return mgr, "", nil
+	}
+
+	if err := mgr.CheckAvailable(); err != nil {
+		log.Printf("⚠️ [%s#%d] codegraph disabled: %v", repo, prNum, err)
+		return mgr, "", nil
+	}
+
+	if err := mgr.BuildIndex(workDir); err != nil {
+		log.Printf("⚠️ [%s#%d] codegraph index build failed (continuing without it): %v", repo, prNum, err)
+		return mgr, "", nil
+	}
+
+	mcpConfig, err := mgr.ClaudeMCPConfig()
+	if err != nil {
+		log.Printf("⚠️ [%s#%d] codegraph mcp config build failed: %v", repo, prNum, err)
+		return mgr, "", nil
+	}
+	return mgr, mcpConfig, mgr.ClaudeAllowedToolNames()
+}
+
+// setupCodeGraphForCodex 为 Codex CLI 准备 codegraph 集成
+func setupCodeGraphForCodex(workDir, repo string, prNum int) (*lib.CodeGraphManager, []string) {
+	mgr := buildCodeGraphManager()
+	if !mgr.Enabled() {
+		return mgr, nil
+	}
+	if err := mgr.CheckAvailable(); err != nil {
+		log.Printf("⚠️ [%s#%d] codegraph disabled: %v", repo, prNum, err)
+		return mgr, nil
+	}
+	if err := mgr.BuildIndex(workDir); err != nil {
+		log.Printf("⚠️ [%s#%d] codegraph index build failed (continuing without it): %v", repo, prNum, err)
+		return mgr, nil
+	}
+	return mgr, mgr.CodexConfigArgs()
 }
 
 // deleteOldBotComments 删除当前 bot 账号在该 PR/MR 上发布的所有评论

@@ -43,6 +43,9 @@ func (testConfig) GetRepoCloneTimeout() int                { return 60 }
 func (testConfig) GetRepoCloneShallowClone() bool          { return true }
 func (testConfig) GetRepoCloneShallowDepth() int           { return 1 }
 func (testConfig) GetRepoCloneCleanupAfterReview() bool    { return true }
+func (testConfig) GetCodeGraphEnabled() bool               { return false }
+func (testConfig) GetCodeGraphBinaryPath() string          { return "codegraph" }
+func (testConfig) GetCodeGraphIndexTimeout() int           { return 600 }
 
 func init() {
 	SetConfig(testConfig{})
@@ -109,5 +112,70 @@ func TestHandleHealth_JSONWhenRequested(t *testing.T) {
 	}
 	if !strings.Contains(rr.Header().Get("Content-Type"), "application/json") {
 		t.Fatalf("expected application/json content-type, got %q", rr.Header().Get("Content-Type"))
+	}
+}
+
+func TestParseIssuesFromReview_EscapedPipeInSnippet(t *testing.T) {
+	content := strings.Join([]string{
+		"### 问题:",
+		"| 文件名 | 旧行号 | 新行号 | Side | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |",
+		"|--------|--------|--------|------|----------|----------|------|----------|----------|",
+		`| controllers/earphone/prompttone.go | - | 366 | RIGHT | ` + "`len(data) >= 3 && (string(data[0:3]) == \"ID3\" \\|\\| data[0] == 0xff)`" + ` | 低 | lint | 内层 len 检查冗余 | 删除冗余检查 |`,
+	}, "\n")
+
+	issues := parseIssuesFromReview(content)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(issues))
+	}
+	got := issues[0]
+	if got.File != "controllers/earphone/prompttone.go" {
+		t.Errorf("file = %q", got.File)
+	}
+	if got.NewLine != 366 {
+		t.Errorf("newLine = %d, want 366", got.NewLine)
+	}
+	if got.Side != "RIGHT" {
+		t.Errorf("side = %q, want RIGHT", got.Side)
+	}
+	wantCode := `len(data) >= 3 && (string(data[0:3]) == "ID3" || data[0] == 0xff)`
+	if got.Code != wantCode {
+		t.Errorf("code = %q, want %q", got.Code, wantCode)
+	}
+	if got.Severity != "低" {
+		t.Errorf("severity = %q, want 低", got.Severity)
+	}
+	if got.Category != "lint" {
+		t.Errorf("category = %q, want lint", got.Category)
+	}
+	if got.Problem != "内层 len 检查冗余" {
+		t.Errorf("problem = %q, want 内层 len 检查冗余", got.Problem)
+	}
+	if got.Suggestion != "删除冗余检查" {
+		t.Errorf("suggestion = %q, want 删除冗余检查", got.Suggestion)
+	}
+}
+
+func TestParseIssuesFromReview_RangeLineNumberNotDropped(t *testing.T) {
+	content := strings.Join([]string{
+		"### 问题:",
+		"| 文件名 | 旧行号 | 新行号 | Side | 代码片段 | 严重程度 | 类别 | 问题描述 | 建议修改 |",
+		"|--------|--------|--------|------|----------|----------|------|----------|----------|",
+		"| a/single.go | - | 211 | RIGHT | foo() | 高 | bug | 单行号 | 修一下 |",
+		"| a/range.go | - | 100-107 | RIGHT | Updates(map) | 高 | bug | 范围行号 | 改成 struct |",
+		"| a/range2.go | - | 9-31 | RIGHT | enabled: true | 低 | lint | 配置范围 | 用占位符 |",
+	}, "\n")
+
+	issues := parseIssuesFromReview(content)
+	if len(issues) != 3 {
+		t.Fatalf("expected 3 issues (range rows must not be dropped), got %d", len(issues))
+	}
+	if issues[1].NewLine != 100 {
+		t.Errorf("range 100-107 newLine = %d, want 100", issues[1].NewLine)
+	}
+	if issues[1].File != "a/range.go" || issues[1].Problem != "范围行号" {
+		t.Errorf("range row mismatched: file=%q problem=%q", issues[1].File, issues[1].Problem)
+	}
+	if issues[2].NewLine != 9 {
+		t.Errorf("range 9-31 newLine = %d, want 9", issues[2].NewLine)
 	}
 }

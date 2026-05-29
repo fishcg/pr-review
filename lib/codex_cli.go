@@ -41,10 +41,13 @@ func NewCodexCLIClient(binaryPath string, timeout int, maxOutputLength int, syst
 }
 
 // ReviewCodeInRepo 在克隆的仓库目录中执行 Codex CLI 审查
-func (c *CodexCLIClient) ReviewCodeInRepo(workDir string, baseBranch string, diffContent string) (*ReviewResult, error) {
+//
+// extraConfigArgs: 额外的 -c key=value 参数（如注入 codegraph MCP）
+func (c *CodexCLIClient) ReviewCodeInRepo(workDir string, baseBranch string, diffContent string, extraConfigArgs []string) (*ReviewResult, error) {
 	fullPrompt := c.SystemPrompt + "\n\n" + strings.ReplaceAll(c.UserTemplate, "{diff}", diffContent)
 
 	args := []string{"review"}
+	args = append(args, extraConfigArgs...)
 	if c.Model != "" {
 		args = append(args, "-m", c.Model)
 	}
